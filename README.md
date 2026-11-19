@@ -89,3 +89,19 @@ src/
 ```
 
 The rules know nothing about React, and the components know nothing about the rules beyond `canPlay`.
+
+## Friends can't connect ("Found the room, but couldn't connect")
+
+The room code worked, but the two devices couldn't open a direct connection. This is normal on mobile data
+and some Wi-Fi networks. The fix is a **TURN relay server**, which passes the game data between you when a direct
+connection is blocked. The free one built into the game (PeerJS's) is often overloaded, so set up your own:
+
+1. Make a free account at https://www.metered.ca/stun-turn (the free plan is plenty: a card game sends very little data).
+2. In the dashboard, create a TURN app and copy its **credentials**: a list of `turn:`/`turns:` URLs, a username and a password.
+3. In Vercel: **Project → Settings → Environment Variables**, add:
+   - `VITE_TURN_URL` = all the URLs exactly as the dashboard shows them, separated by commas
+   - `VITE_TURN_USER` = the username
+   - `VITE_TURN_PASS` = the password
+4. **Deployments → ⋯ → Redeploy** so the new settings are built in.
+
+For local testing, put the same three lines in a `.env.local` file in this folder (it is ignored by git).

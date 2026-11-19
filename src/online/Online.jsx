@@ -88,8 +88,9 @@ function HostRoom({ name, onLeave }) {
   const settings = allSettings[mode] ?? {}
   const setSettings = (next) => setAllSettings((all) => ({ ...all, [mode]: next }))
   const [game, setGame] = useState(null)
-  const [connecting, setConnecting] = useState(0) // guests whose connection hasn't opened yet
-  const [failedJoins, setFailedJoins] = useState(0) // guests whose connection never opened
+  // people trying to join, by browser id (so pressing Try again is still the same person)
+  const [connecting, setConnecting] = useState({}) // id -> name, connection not open yet
+  const [failedJoins, setFailedJoins] = useState({}) // id -> { name, tries }, connection never opened
   const conns = useRef(new Map()) // peer id -> connection
   const live = useRef({}) // latest values, for the PeerJS event handlers
   live.current = { seats, game, mode }
@@ -140,18 +141,26 @@ function HostRoom({ name, onLeave }) {
 
     peer.on('connection', (conn) => {
       // someone found the room; now their browser and ours try to connect directly
-      setConnecting((n) => n + 1)
+      const who = String(conn.metadata?.id ?? conn.peer).slice(0, 80)
+      const whoName = String(conn.metadata?.name ?? '').slice(0, 12) || 'Someone'
+      const without = (obj) => {
+        const next = { ...obj }
+        delete next[who]
+        return next
+      }
+      setConnecting((c) => ({ ...c, [who]: whoName }))
       let opened = false
       const giveUp = setTimeout(() => {
         if (opened) return
-        setConnecting((n) => Math.max(0, n - 1))
-        setFailedJoins((n) => n + 1)
+        setConnecting(without)
+        setFailedJoins((f) => ({ ...f, [who]: { name: whoName, tries: (f[who]?.tries ?? 0) + 1 } }))
         conn.close()
       }, JOIN_TIMEOUT)
       conn.on('open', () => {
         opened = true
         clearTimeout(giveUp)
-        setConnecting((n) => Math.max(0, n - 1))
+        setConnecting(without)
+        setFailedJoins(without)
         conns.current.set(conn.peer, conn)
         lastSeen.set(conn.peer, Date.now())
       })
@@ -291,7 +300,7 @@ function GuestRoom({ name, code, onLeave }) {
       setError(
         phaseRef.current === 'server'
           ? "Couldn't reach the matchmaking server. Check your internet connection."
-          : "Found the room, but couldn't connect to the host's browser. This can happen on strict networks, VPNs, or browsers with WebRTC blocked. Try again, or try the same browser as the host.",
+          : "Found the room, but couldn't connect to the host's device. This usually happens on mobile data or strict Wi-Fi. Try again, or switch networks (for example Wi-Fi instead of mobile data). If it keeps happening, the host needs to set up a relay server (see the README).",
       )
       setStatus('error')
     }, JOIN_TIMEOUT)
@@ -306,7 +315,8 @@ function GuestRoom({ name, code, onLeave }) {
     peer.on('open', () => {
       setPhase('host')
       phaseRef.current = 'host'
-      const c = peer.connect(PREFIX + code, CONNECT_OPTIONS)
+      // metadata: who we are, so the host knows a retry is the same person
+      const c = peer.connect(PREFIX + code, { ...CONNECT_OPTIONS, metadata: { id: playerId(), name } })
       conn.current = c
       c.on('open', () => {
         lastHeard = Date.now()
@@ -398,7 +408,7 @@ function GuestRoom({ name, code, onLeave }) {
 }
 
 // ---------------- Lobby (shared by host and guests) ----------------
-function Lobby({ code, status, error, seats, you, isHost, connecting = 0, failedJoins = 0, mode, settings, setMode, setSettings, onAddBot, onRemove, onStart, onLeave }) {
+function Lobby({ code, status, error, seats, you, isHost, connecting = {}, failedJoins = {}, mode, settings, setMode, setSettings, onAddBot, onRemove, onStart, onLeave }) {
   const [copied, setCopied] = useState(null)
   function copy(text, what) {
     navigator.clipboard?.writeText(text)
@@ -467,12 +477,16 @@ function Lobby({ code, status, error, seats, you, isHost, connecting = 0, failed
             )}
           </ul>
 
-          {connecting > 0 && <p className="join-note">Someone is connecting…</p>}
-          {failedJoins > 0 && connecting === 0 && (
-            <p className="join-note bad">
-              {failedJoins === 1 ? 'A player' : `${failedJoins} players`} found the room but couldn't connect. Ask them to press Try again.
-            </p>
-          )}
+          {Object.entries(connecting).map(([id, who]) => (
+            <p key={`c-${id}`} className="join-note">{who} is connecting…</p>
+          ))}
+          {Object.entries(failedJoins)
+            .filter(([id]) => !connecting[id])
+            .map(([id, f]) => (
+              <p key={`f-${id}`} className="join-note bad">
+                {f.name} found the room but couldn't connect{f.tries > 1 ? ` (${f.tries} tries)` : ''}. Their network is blocking a direct connection: ask them to try another network.
+              </p>
+            ))}
 
           <div className="lobby-actions">
             {isHost ? (

@@ -10,12 +10,13 @@ export const PREFIX = 'unopractice-room-'
 //  - STUN servers tell each browser its public address
 //  - TURN servers relay the data when a direct connection is blocked (strict routers, some browsers/VPNs)
 // Add your own TURN server with VITE_TURN_URL, VITE_TURN_USER and VITE_TURN_PASS if connections keep failing.
+// VITE_TURN_URL can list several addresses separated by commas (e.g. the ones Metered gives you).
 const ICE_SERVERS = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
   ...(import.meta.env.VITE_TURN_URL
-    ? [{ urls: import.meta.env.VITE_TURN_URL, username: import.meta.env.VITE_TURN_USER, credential: import.meta.env.VITE_TURN_PASS }]
+    ? [{ urls: import.meta.env.VITE_TURN_URL.split(',').map((u) => u.trim()), username: import.meta.env.VITE_TURN_USER, credential: import.meta.env.VITE_TURN_PASS }]
     : []),
 ]
 

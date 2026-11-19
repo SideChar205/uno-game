@@ -4,6 +4,7 @@ import { botMove, botJumpIn } from '../game/bot.js'
 import { MODES } from '../game/modes.js'
 import { face, otherSide, meta } from '../game/deck.js'
 import Card from './Card.jsx'
+import { useDrawFlights, DrawFlights } from './DrawFlights.jsx'
 import { backImageFor } from '../game/cardImages.js'
 import Seat, { PowerBadge, PointsBreakdown } from './Seat.jsx'
 import Avatar from './Avatar.jsx'
@@ -71,6 +72,9 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
   useEffect(() => {
     lastViewer.current = viewer
   }, [viewer])
+
+  // cards flying from the draw pile to whoever drew them
+  const { flights, arriving } = useDrawFlights(game, viewer)
 
   // keep track of the screen width so the hand can squeeze to fit
   const [screenWidth, setScreenWidth] = useState(() => window.innerWidth)
@@ -329,7 +333,8 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
               return (
                 <div
                   key={c.id}
-                  className={`hand-slot${hovered === i ? ' hovered' : ''}`}
+                  data-id={c.id}
+                  className={`hand-slot${hovered === i ? ' hovered' : ''}${arriving.has(c.id) ? ' arriving' : ''}`}
                   onMouseEnter={() => setHovered(i)}
                   onMouseLeave={() => setHovered((h) => (h === i ? null : h))}
                   style={{
@@ -356,6 +361,8 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
           </div>
         )}
       </div>
+
+      <DrawFlights flights={flights} side={side} rules={rules} />
 
       {/* ---- dialogs ---- */}
       {choice?.step === 'flex' && (

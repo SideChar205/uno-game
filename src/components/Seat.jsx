@@ -31,6 +31,7 @@ export default function Seat({ player, index, active, position, spot, side, rule
 
   return (
     <div
+      data-seat={index}
       className={`seat ${position}${active ? ' active' : ''}${player.out ? ' out' : ''}`}
       style={spot ? { left: `${spot.x}%`, top: `${spot.y}%` } : undefined}
     >

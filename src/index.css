@@ -1218,3 +1218,27 @@ h2.plain { font-size: 20px; text-transform: none; letter-spacing: 0; color: var(
   .online-banner.compact { margin-bottom: 10px; padding: 9px 12px; }
   .players-panel .seat-list { margin-top: 8px; }
 }
+
+/* ================= Drawing a card: it flies from the pile to whoever drew it ================= */
+.flight { position: fixed; z-index: 60; pointer-events: none; perspective: 900px; animation: flyDraw var(--ms) cubic-bezier(.3, .75, .3, 1) var(--delay) both; }
+.flight-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; animation: flipDraw var(--ms) ease-in-out var(--delay) both; }
+.flight-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.flight-face .card { width: 100%; height: 100%; transition: none; box-shadow: 0 16px 30px rgba(0, 0, 0, .45); }
+.flight-back { transform: rotateY(180deg); }
+@keyframes flyDraw {
+  0% { transform: translate(0, 0) rotate(-6deg) scale(1); }
+  50% { transform: translate(calc(var(--dx) * .5), calc(var(--dy) * .5 - 70px)) rotate(6deg) scale(1.15); }
+  100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(var(--s)); }
+}
+@keyframes flipDraw { 0%, 25% { transform: rotateY(180deg); } 75%, 100% { transform: rotateY(0deg); } }
+/* to an opponent: stays face-down, shrinks into their seat and fades */
+.flight.to-seat { animation-name: flyToSeat; }
+.flight.to-seat .flight-inner { animation: none; }
+.flight.to-seat .flight-back { transform: none; }
+@keyframes flyToSeat {
+  0% { transform: translate(0, 0) rotate(-6deg) scale(1); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) rotate(12deg) scale(var(--s)); opacity: 0; }
+}
+/* your new card's spot stays empty until the flying card lands in it */
+.hand-slot.arriving { visibility: hidden; animation: none; }
