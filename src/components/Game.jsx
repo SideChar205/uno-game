@@ -330,7 +330,10 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
       <div className={`me${myTurn ? ' my-turn' : ''}${me.out ? ' out' : ''}`}>
         <div className="me-bar">
           <div className="me-id">
-            <Avatar player={me} index={anchor} active={anchor === game.current && !over} size={52} />
+            <div className="me-avatar">
+              <Avatar player={me} index={anchor} active={anchor === game.current && !over} size={52} />
+              {myTurn && <span className="your-turn-tag">Your turn</span>}
+            </div>
             <div>
               <div className="name-tag">{me.name}</div>
               <div className="seat-meta">
@@ -338,7 +341,6 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
                   {me.hand.length}
                 </div>
                 {rules.flex && <PowerBadge on={me.power} />}
-                {myTurn && <span className="your-turn-tag">Your turn</span>}
               </div>
               {game.deathmatch && <PointsBreakdown cards={myPoints} penalty={me.penalty} />}
             </div>
