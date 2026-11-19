@@ -9,7 +9,7 @@ import Avatar from '../components/Avatar.jsx'
 import ModePicker from '../components/ModePicker.jsx'
 import { Particles, ColorBlobs } from '../components/Effects.jsx'
 import { randomBotName } from '../game/botNames.js'
-import { PREFIX, PEER_OPTIONS, CONNECT_OPTIONS, JOIN_TIMEOUT, makeCode, cleanCode, allowed, viewFor } from './net.js'
+import { PREFIX, PEER_OPTIONS, CONNECT_OPTIONS, JOIN_TIMEOUT, makeCode, cleanCode, allowed, viewFor, playerId } from './net.js'
 
 const PING_EVERY = 2000 // ms between heartbeat messages
 const TIMEOUT = 8000 // ms of silence before someone counts as gone
@@ -81,7 +81,8 @@ function HostRoom({ name, onLeave }) {
   const [code] = useState(makeCode)
   const [status, setStatus] = useState('connecting') // connecting | open | error
   const [error, setError] = useState(null)
-  const [seats, setSeats] = useState([{ name, isBot: false, peer: null }]) // seat 0 is always the host
+  // seat 0 is always the host. id = the player's browser id (see playerId), used to let them rejoin
+  const [seats, setSeats] = useState(() => [{ name, isBot: false, peer: null, id: playerId() }])
   const [mode, setMode] = useState('classic')
   const [allSettings, setAllSettings] = useState(allDefaultSettings) // each mode keeps its own settings
   const settings = allSettings[mode] ?? {}
@@ -103,7 +104,7 @@ function HostRoom({ name, onLeave }) {
 
     const lastSeen = new Map() // peer id -> time of their last message
 
-    // a guest left: in the lobby they lose their seat; during a game a bot takes over
+    // a guest left: in the lobby they lose their seat; during a game a bot takes over (they can rejoin from the same browser)
     function handleLeave(peerId) {
       const conn = conns.current.get(peerId)
       if (!conn) return
@@ -159,10 +160,37 @@ function HostRoom({ name, onLeave }) {
         lastSeen.set(conn.peer, Date.now())
         const { seats, game, mode } = live.current
         if (msg.type === 'hello') {
-          if (game) return conn.send({ type: 'refused', reason: 'The game has already started.' })
+          const id = typeof msg.id === 'string' ? msg.id.slice(0, 80) : null
+          if (!id) return conn.send({ type: 'refused', reason: 'Please reload the page and try again.' })
+          if (id === seats[0].id) return conn.send({ type: 'refused', reason: "You're already the host of this room in another tab." })
+          const mine = seats.findIndex((x, i) => i > 0 && x.id === id) // a seat this browser had before
+
+          // same browser again (dropped out, or a second tab): give them their seat back
+          if (mine > 0) {
+            const old = seats[mine].peer
+            if (old && old !== conn.peer) {
+              const oldConn = conns.current.get(old)
+              conns.current.delete(old) // forget it first so closing it doesn't count as leaving
+              lastSeen.delete(old)
+              oldConn?.close()
+            }
+            setSeats((s) => s.map((x, i) => (i === mine ? { ...x, peer: conn.peer, isBot: false } : x)))
+            if (game) {
+              setGame((g) =>
+                g && {
+                  ...g,
+                  players: g.players.map((p, i) => (i === mine ? { ...p, isBot: false, name: seats[mine].name } : p)),
+                  log: [`${seats[mine].name} is back and takes over from the bot.`, ...g.log].slice(0, 8),
+                },
+              )
+            }
+            return
+          }
+
+          if (game) return conn.send({ type: 'refused', reason: 'This game has already started. Only players from this game can rejoin, from the same browser they played on.' })
           if (seats.length >= MODES[mode].players.max) return conn.send({ type: 'refused', reason: 'The room is full.' })
           const guestName = String(msg.name ?? '').slice(0, 12) || 'Guest'
-          setSeats((s) => (s.some((x) => x.peer === conn.peer) ? s : [...s, { name: guestName, isBot: false, peer: conn.peer }]))
+          setSeats((s) => (s.some((x) => x.peer === conn.peer) ? s : [...s, { name: guestName, isBot: false, peer: conn.peer, id }]))
         } else if (msg.type === 'action') {
           const seat = seats.findIndex((x) => x.peer === conn.peer)
           // only accept moves that this guest is allowed to make right now
@@ -244,6 +272,7 @@ function GuestRoom({ name, code, onLeave }) {
   const [error, setError] = useState(null)
   const [lobby, setLobby] = useState(null)
   const [view, setView] = useState(null) // { state, seat }
+  const wasPlaying = useRef(false) // lost the connection mid-game? then offer to rejoin
   const conn = useRef(null)
   const phaseRef = useRef('server')
 
@@ -281,7 +310,7 @@ function GuestRoom({ name, code, onLeave }) {
       conn.current = c
       c.on('open', () => {
         lastHeard = Date.now()
-        c.send({ type: 'hello', name })
+        c.send({ type: 'hello', name, id: playerId() })
       })
       c.on('data', (msg) => {
         lastHeard = Date.now()
@@ -293,6 +322,7 @@ function GuestRoom({ name, code, onLeave }) {
           setLobby(msg)
           setStatus('lobby')
         } else if (msg.type === 'state') {
+          wasPlaying.current = true
           setView(msg)
           setStatus('game')
         } else if (msg.type === 'refused') {
@@ -347,7 +377,14 @@ function GuestRoom({ name, code, onLeave }) {
               <button className="btn" onClick={() => setAttempt((a) => a + 1)}>Try again</button>
             </>
           )}
-          {status === 'closed' && (
+          {status === 'closed' && wasPlaying.current && (
+            <>
+              <h2 className="plain">You lost the connection</h2>
+              <p className="muted">A bot is playing for you. Rejoin to take your seat back (works from this browser only).</p>
+              <button className="btn" onClick={() => setAttempt((a) => a + 1)}>Rejoin game</button>
+            </>
+          )}
+          {status === 'closed' && !wasPlaying.current && (
             <>
               <h2 className="plain">The host closed the room</h2>
               <p className="muted">The connection to the host was lost.</p>

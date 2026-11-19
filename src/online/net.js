@@ -32,6 +32,26 @@ export const PEER_OPTIONS = {
 // JSON is understood the same way by every browser
 export const CONNECT_OPTIONS = { reliable: true, serialization: 'json' }
 
+// This browser's player id: a random id made once and kept in the browser.
+// Rooms use it to recognise a player who drops out and comes back (there are no accounts).
+// A different browser or phone gets a different id, so it can't take someone else's seat.
+const ID_KEY = 'uno-player-id'
+let memoryId = null
+export function playerId() {
+  const make = () => (crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`)
+  try {
+    let id = localStorage.getItem(ID_KEY)
+    if (!id) {
+      id = make()
+      localStorage.setItem(ID_KEY, id)
+    }
+    return id
+  } catch {
+    // storage blocked (some private modes): the id lasts until the page is closed
+    return (memoryId ??= make())
+  }
+}
+
 export const JOIN_TIMEOUT = 15000 // ms before we tell the guest something is wrong
 
 // 5-character codes without look-alike letters (no 0/O, 1/I/L)
