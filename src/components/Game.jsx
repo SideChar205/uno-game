@@ -5,6 +5,7 @@ import { MODES } from '../game/modes.js'
 import { face, otherSide, meta } from '../game/deck.js'
 import Card from './Card.jsx'
 import { useDrawFlights, DrawFlights } from './DrawFlights.jsx'
+import { useHandMoves, HandMoves, HAND_ARRIVES_MS } from './HandMoves.jsx'
 import { backImageFor } from '../game/cardImages.js'
 import Seat, { PowerBadge, PointsBreakdown } from './Seat.jsx'
 import Avatar from './Avatar.jsx'
@@ -75,6 +76,38 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
 
   // cards flying from the draw pile to whoever drew them
   const { flights, arriving } = useDrawFlights(game, viewer)
+
+  // Seven-O / trades: hands fly between players; your new hand is dealt in once it lands
+  const moves = useHandMoves(game, viewer)
+  const lastMove = useRef(game.handMove?.id ?? null)
+  const lateDeal = useRef(new Map()) // card id -> deal-in delay (ms)
+  if ((game.handMove?.id ?? null) !== lastMove.current) {
+    lastMove.current = game.handMove?.id ?? null
+    if (game.handMove?.moves.some(([, to]) => to === viewer)) {
+      lateDeal.current = new Map(players[viewer].hand.map((c, i) => [c.id, HAND_ARRIVES_MS + i * 45]))
+    }
+  }
+
+  // your turn: a quick "Your turn!" pop when it starts, and the browser tab says so too
+  const [turnFlash, setTurnFlash] = useState(0)
+  const turnKey = myTurn ? `${game.current}:${viewer}` : null
+  const lastTurnKey = useRef(null)
+  useEffect(() => {
+    if (turnKey && turnKey !== lastTurnKey.current) setTurnFlash((n) => n + 1)
+    lastTurnKey.current = turnKey
+  }, [turnKey])
+  useEffect(() => {
+    if (!turnFlash) return
+    const t = setTimeout(() => setTurnFlash(0), 1400)
+    return () => clearTimeout(t)
+  }, [turnFlash])
+  useEffect(() => {
+    const base = 'UNO | Card Game'
+    document.title = myTurn && !over ? '● Your turn! | UNO' : base
+    return () => {
+      document.title = base
+    }
+  }, [myTurn, over])
 
   // keep track of the screen width so the hand can squeeze to fit
   const [screenWidth, setScreenWidth] = useState(() => window.innerWidth)
@@ -277,6 +310,7 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
 
           <div className="discard-wrap">
             <DiscardPile discard={game.discard} side={side} rules={rules} flipIn={justFlipped} from={game.lastPlay ? flyFrom(game.lastPlay.by) : 'deck'} />
+            <span className="deck-count discard-count" title="Cards in the discard pile">{game.discard.length}</span>
             {game.pending && (
               <div key={game.pending.amount} className="stack-badge">+{game.pending.amount}</div>
             )}
@@ -298,7 +332,10 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
           <div className="me-id">
             <Avatar player={me} index={anchor} active={anchor === game.current && !over} size={52} />
             <div>
-              <div className="name-tag">{me.name}</div>
+              <div className="name-tag">
+                {me.name}
+                {myTurn && <span className="your-turn-tag">Your turn</span>}
+              </div>
               <div className="seat-meta">
                 <div key={`count-${me.hand.length}`} title={`${me.hand.length} cards in hand`} className={`count-badge${rules.mercy && me.hand.length >= rules.mercy - 5 ? ' danger' : ''}`}>
                   {me.hand.length}
@@ -342,7 +379,7 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
                     '--r': `${hovered === i ? 0 : offset * fan}deg`,
                     '--y': `${Math.min(28, Math.abs(offset) * Math.abs(offset) * fan * 0.25)}px`, // the curve never drops cards off the screen
                     marginLeft: i === 0 ? 0 : overlap,
-                    animationDelay: game.turn === 0 || justSwitched ? `${i * 70}ms` : '0ms',
+                    animationDelay: lateDeal.current.has(c.id) ? `${lateDeal.current.get(c.id)}ms` : game.turn === 0 || justSwitched ? `${i * 70}ms` : '0ms',
                   }}
                 >
                   <Card
@@ -363,6 +400,8 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
       </div>
 
       <DrawFlights flights={flights} side={side} rules={rules} />
+      <HandMoves moves={moves} />
+      {turnFlash > 0 && <div key={turnFlash} className="turn-flash">Your turn!</div>}
 
       {/* ---- dialogs ---- */}
       {choice?.step === 'flex' && (

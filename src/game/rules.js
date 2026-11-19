@@ -203,10 +203,16 @@ function skipVictim(s, victim) {
   advance(s, s.players[victim].out ? 1 : 2)
 }
 
+// remember which hands moved where, so the table can animate it
+function noteHandMove(s, moves) {
+  s.handMove = { id: (s.handMove?.id ?? 0) + 1, moves }
+}
+
 function swapHands(s, a, b) {
   const t = s.players[a].hand
   s.players[a].hand = s.players[b].hand
   s.players[b].hand = t
+  noteHandMove(s, [[a, b], [b, a]])
 }
 
 // Seven-O: every hand moves to the next player in the direction of play
@@ -219,6 +225,7 @@ function rotateHands(s) {
   } while (i !== s.current && order.length <= s.players.length)
   const hands = order.map((idx) => s.players[idx].hand)
   order.forEach((idx, k) => (s.players[order[(k + 1) % order.length]].hand = hands[k]))
+  noteHandMove(s, order.map((idx, k) => [idx, order[(k + 1) % order.length]]))
 }
 
 function fewestCardsOpponent(s) {

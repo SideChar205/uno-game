@@ -1242,3 +1242,70 @@ h2.plain { font-size: 20px; text-transform: none; letter-spacing: 0; color: var(
 }
 /* your new card's spot stays empty until the flying card lands in it */
 .hand-slot.arriving { visibility: hidden; animation: none; }
+
+/* ================= Discard pile count (same badge as the draw pile, with a face-up card icon) ================= */
+.discard-wrap .discard-count {
+  z-index: 3; bottom: -34px; padding: 3px 10px 3px 8px; border-radius: 999px;
+  font-size: 13px; font-weight: 900; color: #fff; background: #0b0b12; border: 2px solid rgba(255, 255, 255, .85);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .45); display: inline-flex; align-items: center; gap: 5px;
+}
+.discard-wrap .discard-count::before {
+  content: ''; width: 9px; height: 12px; border-radius: 2px; border: 1.5px solid #fff; transform: rotate(8deg);
+  background: radial-gradient(ellipse 40% 55% at 50% 50%, #fff 0 60%, transparent 62%), #ef4444;
+}
+/* the wild color chip moves above the discard pile so it doesn't cover the count */
+.discard-wrap .color-chip { bottom: auto; top: -30px; }
+
+/* ================= Your turn ================= */
+/* a glowing, breathing light behind your hand */
+.me.my-turn::before {
+  content: ''; position: absolute; inset: -40px 0 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse 55% 85% at 50% 100%, rgba(255, 212, 59, .55), rgba(255, 212, 59, .12) 55%, transparent 75%);
+  animation: myTurnGlow 1.6s ease-in-out infinite alternate;
+}
+.me.my-turn::after { /* a bright line along the bottom edge */
+  content: ''; position: absolute; left: 10%; right: 10%; bottom: 0; height: 4px; border-radius: 4px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, #ffd43b, #fff3bf, #ffd43b, transparent);
+  box-shadow: 0 0 18px 4px rgba(255, 212, 59, .7); animation: myTurnGlow 1.6s ease-in-out infinite alternate;
+}
+@keyframes myTurnGlow { from { opacity: .55; } to { opacity: 1; } }
+.your-turn-tag {
+  margin-left: 8px; padding: 2px 8px; border-radius: 999px; vertical-align: middle;
+  font-size: 11px; font-weight: 900; letter-spacing: .5px; text-transform: uppercase; color: #1a1300; background: #ffd43b;
+  box-shadow: 0 0 12px rgba(255, 212, 59, .8); animation: myTurnGlow 1s ease-in-out infinite alternate;
+}
+/* the pop when your turn starts */
+.turn-flash {
+  position: fixed; left: 50%; bottom: 230px; z-index: 55; pointer-events: none; white-space: nowrap;
+  font-size: 46px; font-weight: 900; color: #ffd43b; letter-spacing: 1px;
+  text-shadow: 0 3px 0 #b45309, 0 0 24px rgba(255, 212, 59, .8), 0 8px 24px rgba(0, 0, 0, .5);
+  animation: turnFlash 1.4s cubic-bezier(.2, .9, .3, 1.2) forwards;
+}
+@keyframes turnFlash {
+  0% { opacity: 0; transform: translateX(-50%) translateY(30px) scale(.5); }
+  18% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.12); }
+  30% { transform: translateX(-50%) scale(1); }
+  78% { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(.95); }
+}
+
+/* ================= Seven-O: hands flying between players ================= */
+.hand-move {
+  position: fixed; z-index: 58; width: 0; height: 0; pointer-events: none;
+  animation: handMove var(--ms) cubic-bezier(.45, .05, .3, 1) var(--delay) both;
+}
+.bundle-card {
+  position: absolute; left: -23px; top: -34px; width: 46px; height: 68px; border-radius: 6px; border: 2px solid #fff;
+  background: var(--back); box-shadow: 0 6px 14px rgba(0, 0, 0, .45);
+  transform: rotate(calc((var(--i) - (var(--n) - 1) / 2) * 9deg)) translateY(calc(var(--i) * -1px));
+  transform-origin: 50% 120%;
+}
+.theme-nomercy .bundle-card { border-color: #0a0a0f; }
+.has-back-img .bundle-card { background: #000 center / cover no-repeat var(--back-img); border: 0; }
+@keyframes handMove {
+  0% { transform: translate(0, 0) scale(.6) rotate(0); opacity: 0; }
+  12% { opacity: 1; transform: translate(0, -10px) scale(1) rotate(0); }
+  55% { transform: translate(calc(var(--dx) * .55), calc(var(--dy) * .55 - 90px)) scale(1.25) rotate(calc(var(--spin) * .6)); }
+  88% { opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(.7) rotate(var(--spin)); opacity: 0; }
+}
