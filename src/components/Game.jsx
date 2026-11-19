@@ -377,7 +377,7 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
                   style={{
                     '--shift': `${shift}px`,
                     '--r': `${hovered === i ? 0 : offset * fan}deg`,
-                    '--y': `${Math.min(28, Math.abs(offset) * Math.abs(offset) * fan * 0.25)}px`, // the curve never drops cards off the screen
+                    '--y': `${Math.min(14, Math.abs(offset) * Math.abs(offset) * fan * 0.25)}px`, // a gentle curve that never drops cards off the screen
                     marginLeft: i === 0 ? 0 : overlap,
                     animationDelay: lateDeal.current.has(c.id) ? `${lateDeal.current.get(c.id)}ms` : game.turn === 0 || justSwitched ? `${i * 70}ms` : '0ms',
                   }}

@@ -74,6 +74,9 @@ export default function DirectionRing({ direction }) {
     <div className={`ring ${direction === 1 ? 'cw' : 'ccw'}`} aria-hidden="true">
       <div key={direction} className="ring-flash" />
       <div className="ring-flip">
+        {/* the spin turns this wrapper, not the drawing inside it: the browser draws the glowing arrows once
+            and the graphics card just rotates the finished picture (much lighter on slow computers) */}
+        <div ref={spinner} className="ring-spinner">
         <svg viewBox="0 0 400 400">
           <defs>
             <filter id="ring-glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -84,7 +87,7 @@ export default function DirectionRing({ direction }) {
               </feMerge>
             </filter>
           </defs>
-          <g ref={spinner} style={{ transformOrigin: '200px 200px' }}>
+          <g>
             <circle cx={C} cy={C} r={R} fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="2 10" strokeLinecap="round" opacity=".45" />
             <g filter="url(#ring-glow)" fill="currentColor" stroke="currentColor" strokeWidth="3" strokeLinejoin="round">
               <path d={ARROW_A} />
@@ -92,6 +95,7 @@ export default function DirectionRing({ direction }) {
             </g>
           </g>
         </svg>
+        </div>
       </div>
     </div>
   )

@@ -1309,3 +1309,53 @@ h2.plain { font-size: 20px; text-transform: none; letter-spacing: 0; color: var(
   88% { opacity: 1; }
   100% { transform: translate(var(--dx), var(--dy)) scale(.7) rotate(var(--spin)); opacity: 0; }
 }
+
+/* ================= Side seats: their cards lie sideways, so the back image is turned to fit (instead of being cropped) ================= */
+.has-back-img .fan.vertical .fan-card:not(.peek-face) { position: relative; overflow: hidden; background: #000; }
+.has-back-img .fan.vertical .fan-card:not(.peek-face)::before {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 46px; height: 68px;
+  background: center / 100% 100% no-repeat var(--back-img);
+  transform: translate(-50%, -50%) rotate(90deg); /* left seat: the card's top points at the table */
+}
+.has-back-img .seat.right .fan.vertical .fan-card:not(.peek-face)::before { transform: translate(-50%, -50%) rotate(-90deg); }
+
+/* ================= Your turn glow: a soft light in the table's own colour (no yellow haze, no bottom line) ================= */
+.me.my-turn { background: none; }
+.me.my-turn::before {
+  background: radial-gradient(ellipse 50% 80% at 50% 100%,
+    color-mix(in srgb, var(--glow) 35%, rgba(255, 255, 255, .5)),
+    color-mix(in srgb, var(--glow) 30%, transparent) 50%, transparent 75%);
+}
+.me.my-turn::after { display: none; }
+/* room under the hand so the outer cards of a big, tilted hand stay on screen */
+.hand { padding-bottom: 22px; }
+
+/* ================= Performance: looping effects only fade or move ready-made layers (no repainting every frame) ================= */
+.ring-spinner { width: 100%; height: 100%; will-change: transform; }
+
+/* active player's avatar: the glow is a separate layer that fades in and out (instead of animating box-shadow) */
+.avatar { position: relative; }
+.avatar.active { animation: none; box-shadow: 0 0 0 3px rgba(255, 236, 150, .7), 0 8px 20px rgba(0, 0, 0, .35); }
+.avatar.active::after {
+  content: ''; position: absolute; inset: -4px; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 4px rgba(255, 236, 150, .35), 0 0 38px 12px rgba(255, 212, 59, .85);
+  will-change: opacity; animation: glowFade 1.4s ease-in-out infinite alternate;
+}
+@keyframes glowFade { from { opacity: .35; } to { opacity: 1; } }
+
+/* "Your turn" pill: a ring that grows and fades (instead of animating box-shadow) */
+.turn-pill.mine { animation: none; position: relative; }
+.turn-pill.mine::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 3px rgba(255, 212, 59, .8); will-change: transform, opacity;
+  animation: pillRing 1.6s ease-out infinite;
+}
+@keyframes pillRing { from { transform: scale(1); opacity: 1; } to { transform: scale(1.18, 1.5); opacity: 0; } }
+
+/* playable wild cards: the color wheel only turns while you point at the card */
+.card.any-wild.playable .oval { animation: none; }
+.card.any-wild.playable:hover .oval { animation: wildSpin 4s linear infinite; }
+
+/* big soft glows get their own layer so fading them is cheap */
+.me.my-turn::before { will-change: opacity; }
+.particles span { will-change: transform; }
