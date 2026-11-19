@@ -1,7 +1,8 @@
 // Online play: create a room (host) or join one with an invite code (guest).
 // The host's browser runs the real game; guests send their moves and get back what they're allowed to see.
 import { useEffect, useRef, useState } from 'react'
-import Peer from 'peerjs'
+// rooms run through a public message relay (works in every browser and on every network), see relay.js
+import { RelayPeer as Peer } from './relay.js'
 import { gameReducer } from '../game/rules.js'
 import { MODES, allDefaultSettings } from '../game/modes.js'
 import Game from '../components/Game.jsx'
@@ -99,7 +100,7 @@ function HostRoom({ name, onLeave }) {
     const peer = new Peer(PREFIX + code, PEER_OPTIONS)
     peer.on('open', () => setStatus('open'))
     peer.on('error', (e) => {
-      setError(e.type === 'unavailable-id' ? 'That room code is already in use. Leave and create a new room.' : `Connection problem (${e.type}).`)
+      setError(e.type === 'network' ? "Couldn't reach the online service. Check your internet connection, then leave and create the room again." : `Connection problem (${e.type}).`)
       setStatus('error')
     })
 
@@ -299,8 +300,8 @@ function GuestRoom({ name, code, onLeave }) {
       if (joined) return
       setError(
         phaseRef.current === 'server'
-          ? "Couldn't reach the matchmaking server. Check your internet connection."
-          : "Found the room, but couldn't connect to the host's device. This usually happens on mobile data or strict Wi-Fi. Try again, or switch networks (for example Wi-Fi instead of mobile data). If it keeps happening, the host needs to set up a relay server (see the README).",
+          ? "Couldn't reach the online service. Check your internet connection, then try again."
+          : "The host didn't answer. Make sure they still have the room open, then try again.",
       )
       setStatus('error')
     }, JOIN_TIMEOUT)
@@ -343,7 +344,13 @@ function GuestRoom({ name, code, onLeave }) {
       c.on('close', () => !leaving && setStatus((s) => (s === 'error' ? s : 'closed')))
     })
     peer.on('error', (e) => {
-      setError(e.type === 'peer-unavailable' ? `No room with code ${code}. Check the code with your host.` : `Connection problem (${e.type}).`)
+      setError(
+        e.type === 'peer-unavailable'
+          ? `No room with code ${code}. Check the code with your host, and that their room is still open.`
+          : e.type === 'network'
+            ? "Couldn't reach the online service. Check your internet connection, then try again."
+            : `Connection problem (${e.type}).`,
+      )
       setStatus('error')
     })
     return () => {
@@ -375,8 +382,8 @@ function GuestRoom({ name, code, onLeave }) {
               <div className="spinner" />
               <h2 className="plain">Joining room {code}…</h2>
               <ol className="join-steps">
-                <li className={phase === 'server' ? 'now' : 'done'}>Contacting the matchmaking server</li>
-                <li className={phase === 'host' ? 'now' : ''}>Connecting to the host's browser</li>
+                <li className={phase === 'server' ? 'now' : 'done'}>Connecting to the online service</li>
+                <li className={phase === 'host' ? 'now' : ''}>Finding the room</li>
               </ol>
             </>
           )}
@@ -484,7 +491,7 @@ function Lobby({ code, status, error, seats, you, isHost, connecting = {}, faile
             .filter(([id]) => !connecting[id])
             .map(([id, f]) => (
               <p key={`f-${id}`} className="join-note bad">
-                {f.name} found the room but couldn't connect{f.tries > 1 ? ` (${f.tries} tries)` : ''}. Their network is blocking a direct connection: ask them to try another network.
+                {f.name} found the room but couldn't connect{f.tries > 1 ? ` (${f.tries} tries)` : ''}. Ask them to press Try again.
               </p>
             ))}
 
