@@ -1,0 +1,7 @@
+{
+  "title": "UNO Card Game",
+  "description": "The classic card game with Skip, Reverse, Draw Two and Wilds. Play against bots or pass-and-play with friends.",
+  "tags": ["React", "useReducer", "Game logic"],
+  "port": 5175,
+  "order": 2
+}
