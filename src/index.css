@@ -1359,3 +1359,15 @@ h2.plain { font-size: 20px; text-transform: none; letter-spacing: 0; color: var(
 /* big soft glows get their own layer so fading them is cheap */
 .me.my-turn::before { will-change: opacity; }
 .particles span { will-change: transform; }
+
+/* "Your turn" tag: its own pill next to your card count, with a pulsing dot */
+.your-turn-tag {
+  margin-left: 0; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 11px 0 9px;
+  font-size: 12px; letter-spacing: .6px; color: #1a1300; background: #ffd43b; border: 2px solid #fff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .3); animation: none;
+}
+.your-turn-tag::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%; background: #16a34a;
+  box-shadow: 0 0 0 0 rgba(22, 163, 74, .6); animation: turnDot 1.2s ease-out infinite; will-change: transform, opacity;
+}
+@keyframes turnDot { 0% { transform: scale(.8); opacity: 1; } 70% { transform: scale(1.25); opacity: .55; } 100% { transform: scale(.8); opacity: 1; } }

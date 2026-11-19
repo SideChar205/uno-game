@@ -23,6 +23,23 @@ export const colorsFor = (side) => (side === 'dark' ? DARK_COLORS : COLORS)
 export const activePlayers = (s) => s.players.map((_, i) => i).filter((i) => !s.players[i].out)
 
 // Can `player` put `card` on the pile right now?
+// how many cards you'd hold after playing this card (Discard All also throws away every other card of its color)
+export function cardsLeftAfter(card, s, player) {
+  const f = faceOf(s, card)
+  let left = player.hand.length - 1
+  if (meta(f.value).discardAll) left -= player.hand.filter((c) => c.id !== card.id && faceOf(s, c).color === f.color).length
+  return left
+}
+
+// UNO can be called when one of your playable cards would leave you with exactly one card
+export function canCallUno(s, playerIndex) {
+  const player = s.players[playerIndex]
+  if (!player || s.saidUno) return false
+  return player.hand.some(
+    (c) => canPlay(c, s, player) && (s.drawnCardId === null || s.drawnCardId === undefined || c.id === s.drawnCardId) && cardsLeftAfter(c, s, player) === 1,
+  )
+}
+
 export function canPlay(card, s, player) {
   if (s.roulette) return false
   const f = faceOf(s, card)
@@ -628,9 +645,8 @@ export function gameReducer(state, action) {
     }
 
     case 'CALL_UNO':
-      // only when you have 2 cards and can actually play one of them this turn
-      if (player.hand.length !== 2 || s.saidUno) return state
-      if (!player.hand.some((c) => canPlay(c, s, player))) return state
+      // only when a card you can play now would leave you with one card (2 cards, or a Discard All that clears a color)
+      if (!canCallUno(s, s.current)) return state
       s.saidUno = true
       addLog(s, `${player.name} calls UNO!`)
       addEvent(s, 'uno', 'UNO!')

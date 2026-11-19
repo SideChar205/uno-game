@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { canPlay, canJumpIn, choicesNeeded, needsFlex, topCard, faceOf, colorsFor, activePlayers, DEATHMATCH_TURNS, handPoints } from '../game/rules.js'
+import { canPlay, canCallUno, canJumpIn, choicesNeeded, needsFlex, topCard, faceOf, colorsFor, activePlayers, DEATHMATCH_TURNS, handPoints } from '../game/rules.js'
 import { botMove, botJumpIn } from '../game/bot.js'
 import { MODES } from '../game/modes.js'
 import { face, otherSide, meta } from '../game/deck.js'
@@ -332,22 +332,20 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
           <div className="me-id">
             <Avatar player={me} index={anchor} active={anchor === game.current && !over} size={52} />
             <div>
-              <div className="name-tag">
-                {me.name}
-                {myTurn && <span className="your-turn-tag">Your turn</span>}
-              </div>
+              <div className="name-tag">{me.name}</div>
               <div className="seat-meta">
                 <div key={`count-${me.hand.length}`} title={`${me.hand.length} cards in hand`} className={`count-badge${rules.mercy && me.hand.length >= rules.mercy - 5 ? ' danger' : ''}`}>
                   {me.hand.length}
                 </div>
                 {rules.flex && <PowerBadge on={me.power} />}
+                {myTurn && <span className="your-turn-tag">Your turn</span>}
               </div>
               {game.deathmatch && <PointsBreakdown cards={myPoints} penalty={me.penalty} />}
             </div>
           </div>
           <div className="row">
             {jumpable.size > 0 && <span className="jump-hint">Same card! Jump in →</span>}
-            {myTurn && me.hand.length === 2 && playable.size > 0 && (
+            {myTurn && (game.saidUno || canCallUno(game, viewer)) && (
               <button className={`btn uno${game.saidUno ? '' : ' pulse'}`} disabled={game.saidUno} onClick={() => dispatch({ type: 'CALL_UNO' })}>
                 {game.saidUno ? 'UNO called' : 'UNO!'}
               </button>
