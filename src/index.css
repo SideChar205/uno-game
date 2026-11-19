@@ -1379,3 +1379,18 @@ h2.plain { font-size: 20px; text-transform: none; letter-spacing: 0; color: var(
   height: 22px; padding: 0 9px; font-size: 11px; animation: none;
 }
 .me-avatar .your-turn-tag::before { display: none; }
+
+/* ================= Hand: one clean arc, and the mouse is tracked by the hand (not by each card) ================= */
+.hand { position: relative; }
+.hand-slot { --y: 0px; pointer-events: none; transform-origin: 50% 260%; }
+.hand.pointing { cursor: pointer; }
+/* playable cards still stand a bit taller, but the same for every card so the row stays even */
+.hand-slot .card.playable, .hand-slot .card.jumpable { transform: translateY(-14px); }
+.hand-slot.hovered .card { transform: translateY(-34px) scale(1.12); }
+.hand-slot.hovered .card.playable, .hand-slot.hovered .card.jumpable { transform: translateY(-44px) scale(1.14); }
+
+/* the "Your turn" tag lines up with the left edge of your avatar, so it never runs off the screen */
+.me-avatar .your-turn-tag { left: -4px; transform: none; }
+
+/* each card tilts around its own middle, so what you see lines up with what you point at */
+.hand-slot { transform-origin: 50% 50%; }

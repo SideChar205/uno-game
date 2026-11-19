@@ -42,6 +42,7 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
   const [choice, setChoice] = useState(null)
   // which card in your hand the mouse is over (the hand spreads around it)
   const [hovered, setHovered] = useState(null)
+  const handRef = useRef(null)
 
   // Deathmatch warning: shown to everyone the moment Deathmatch starts
   const [dmNotice, setDmNotice] = useState(false)
@@ -218,8 +219,26 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
   if (hand.length > 1 && cardWidth + (hand.length - 1) * step > room) step = (room - cardWidth) / (hand.length - 1)
   const overlap = step - cardWidth
   const spread = Math.max(0, (cardWidth * 1.05 - step) / 2) // how far neighbours slide away from the hovered card
-  const fan = hand.length > 1 ? Math.min(5, 40 / hand.length) : 0 // degrees between cards
+  const fan = hand.length > 1 ? Math.min(4, 32 / hand.length) : 0 // degrees between cards (each card tilts around its own middle)
+  const half = (hand.length - 1) / 2
+  const arcDrop = half > 0 ? 16 / (half * half) : 0 // the outermost cards end up 16px lower than the middle one
   const top = topCard(game)
+
+  // which card is under the mouse: worked out from the cards' resting spots (offsetLeft ignores the lift and slide),
+  // so the hovered card growing or its neighbours moving away never changes which card you're on
+  function cardAt(clientX, clientY) {
+    const box = handRef.current
+    if (!box) return null
+    const rect = box.getBoundingClientRect()
+    if (clientY < rect.top - 56 || clientY > rect.bottom) return null // above the hand (with room for a lifted card) or below it
+    const slots = box.querySelectorAll(':scope > .hand-slot')
+    const x = clientX - rect.left
+    for (let i = slots.length - 1; i >= 0; i--) {
+      const left = slots[i].offsetLeft
+      if (x >= left) return i < slots.length - 1 || x <= left + slots[i].offsetWidth ? i : null // later cards lie on top
+    }
+    return null
+  }
   const nextDraw = game.drawPile[game.drawPile.length - 1]
 
   const backImg = backImageFor(game.mode) // optional image file for this mode's card back
@@ -327,7 +346,18 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
       </div>
 
       {/* you */}
-      <div className={`me${myTurn ? ' my-turn' : ''}${me.out ? ' out' : ''}`}>
+      {/* the mouse is followed over your whole area (not just the hand box), so a lifted card never "loses" the mouse */}
+      <div
+        className={`me${myTurn ? ' my-turn' : ''}${me.out ? ' out' : ''}`}
+        onPointerMove={(e) => setHovered(cardAt(e.clientX, e.clientY))}
+        onPointerDown={(e) => setHovered(cardAt(e.clientX, e.clientY))}
+        onPointerLeave={() => setHovered(null)}
+        onClick={(e) => {
+          if (e.target.closest('button')) return // UNO / Pass buttons do their own thing
+          const c = hand[cardAt(e.clientX, e.clientY)]
+          if (c && (playable.has(c.id) || jumpable.has(c.id))) startPlay(c, jumpable.has(c.id))
+        }}
+      >
         <div className="me-bar">
           <div className="me-id">
             <div className="me-avatar">
@@ -362,22 +392,23 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
           <p className="out-note">You're out: {rules.mercy}+ cards. Watch the others finish!</p>
         ) : (
           /* key={anchor}: a new point of view re-deals that player's hand */
-          <div key={anchor} className="hand">
+          <div
+            key={anchor}
+            ref={handRef}
+            className={`hand${hovered !== null && hand[hovered] && (playable.has(hand[hovered].id) || jumpable.has(hand[hovered].id)) ? ' pointing' : ''}`}
+          >
             {hand.map((c, i) => {
               const offset = i - (hand.length - 1) / 2
-              const canUse = playable.has(c.id) || jumpable.has(c.id)
               const shift = hovered === null || hovered === i ? 0 : i < hovered ? -spread : spread
               return (
                 <div
                   key={c.id}
                   data-id={c.id}
                   className={`hand-slot${hovered === i ? ' hovered' : ''}${arriving.has(c.id) ? ' arriving' : ''}`}
-                  onMouseEnter={() => setHovered(i)}
-                  onMouseLeave={() => setHovered((h) => (h === i ? null : h))}
                   style={{
                     '--shift': `${shift}px`,
                     '--r': `${hovered === i ? 0 : offset * fan}deg`,
-                    '--y': `${Math.min(14, Math.abs(offset) * Math.abs(offset) * fan * 0.25)}px`, // a gentle curve that never drops cards off the screen
+                    '--y': `${(offset * offset * arcDrop).toFixed(1)}px`, // the arc: outer cards sit a little lower
                     marginLeft: i === 0 ? 0 : overlap,
                     animationDelay: lateDeal.current.has(c.id) ? `${lateDeal.current.get(c.id)}ms` : game.turn === 0 || justSwitched ? `${i * 70}ms` : '0ms',
                   }}
@@ -390,7 +421,6 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
                     jumpable={jumpable.has(c.id)}
                     dim={myTurn && !playable.has(c.id)}
                     flipIn={justFlipped}
-                    onClick={canUse ? () => startPlay(c, jumpable.has(c.id)) : undefined}
                   />
                 </div>
               )
