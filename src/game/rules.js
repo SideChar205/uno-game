@@ -44,6 +44,18 @@ export function canCallUno(s, playerIndex) {
 // play any playable card, or pass once you've drawn. Only Classic's optional "Draw until you can play" works differently.
 export const freeDraw = (s) => !s.rules.drawUntil
 
+// Catching: forget to call UNO and the others have a few seconds to hit Catch! on you
+export const UNO_CATCH_MS = 5000
+const UNO_CATCH_GRACE_MS = 1500 // online: room for lag before the host closes the window
+
+// Is a Catch! still possible against this player? (the hand check closes it as soon as they draw or go out)
+export function catchOpen(s) {
+  const c = s.unoCatch
+  if (!c) return false
+  const p = s.players[c.player]
+  return !!p && !p.out && p.hand.length === 1
+}
+
 export function canPlay(card, s, player) {
   if (s.roulette) return false
   const f = faceOf(s, card)
@@ -319,6 +331,7 @@ export function newGame(seats, modeKey = 'classic', settings = {}) {
     direction: 1, // 1 = clockwise, -1 = counter-clockwise
     drawnCardId: null, // set after drawing a playable card: you may play it or pass
     saidUno: false,
+    unoCatch: null, // { player, key, until }: someone forgot to call UNO and can be caught
     winner: null,
     log: [],
     viewer: null,
@@ -408,21 +421,9 @@ function play(s, cardId, opts = {}) {
     return s
   }
 
-  // one card left: you must have called UNO (bots always remember)
-  if (player.hand.length === 1) {
-    if (player.isBot || s.saidUno) {
-      if (player.isBot) {
-        addLog(s, `${player.name} calls UNO!`)
-        addEvent(s, 'uno', 'UNO!')
-      }
-    } else if (s.rules.launcher) {
-      const n = hit(s, s.current) + hit(s, s.current)
-      addLog(s, `${player.name} forgot to call UNO: 2 launcher hits, ${n} cards`)
-    } else {
-      drawCards(s, s.current, 2)
-      addLog(s, `${player.name} forgot to call UNO and draws 2`)
-    }
-    if (player.out) return advance(s, 1), s
+  // one card left without calling UNO: nothing happens yet, but the others can catch you (see CATCH)
+  if (player.hand.length === 1 && !s.saidUno) {
+    s.unoCatch = { player: s.current, key: `${s.turn}-${s.current}`, until: Date.now() + UNO_CATCH_MS }
   }
 
   // ----- card effects -----
@@ -662,13 +663,42 @@ export function gameReducer(state, action) {
       return s
     }
 
-    case 'CALL_UNO':
-      // only when a card you can play now would leave you with one card (2 cards, or a Discard All that clears a color)
-      if (!canCallUno(s, s.current)) return state
+    case 'CALL_UNO': {
+      const who = action.player ?? s.current
+      // already down to one card without calling? calling now saves you, if nobody has caught you yet
+      if (catchOpen(s) && s.unoCatch.player === who) {
+        s.unoCatch = null
+        addLog(s, `${s.players[who].name} calls UNO just in time!`)
+        addEvent(s, 'uno', 'UNO!')
+        return s
+      }
+      // on your turn: when a card you can play now would leave you with one card (2 cards, or a Discard All that clears a color)
+      if (who !== s.current || !canCallUno(s, s.current)) return state
       s.saidUno = true
       addLog(s, `${player.name} calls UNO!`)
       addEvent(s, 'uno', 'UNO!')
       return s
+    }
+
+    case 'CATCH': {
+      // someone forgot to call UNO: the first player to hit Catch! makes them draw 2
+      const c = s.unoCatch
+      const by = s.players[action.player]
+      if (!catchOpen(s) || !by || action.player === c.player || Date.now() > c.until + UNO_CATCH_GRACE_MS) return state
+      const victim = s.players[c.player]
+      s.unoCatch = null
+      if (s.rules.launcher) {
+        const n = hit(s, c.player) + hit(s, c.player)
+        addLog(s, `${by.name} caught ${victim.name} without UNO: 2 launcher hits, ${n} cards`)
+      } else {
+        drawCards(s, c.player, 2)
+        addLog(s, `${by.name} caught ${victim.name} without UNO: draw 2`)
+      }
+      addEvent(s, 'catch', 'Caught!')
+      // No Mercy: the penalty can knock them out; if it was their turn, move on
+      if (victim.out && s.winner === null && s.current === c.player) advance(s, 1)
+      return s
+    }
 
     default:
       return state

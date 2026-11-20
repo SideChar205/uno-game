@@ -23,7 +23,7 @@ export function PowerBadge({ on }) {
 
 // An opponent at the table: avatar, name, card count and a fan of their cards (backs, or in Flip the other side)
 // position: top/left/right, or 'arc' with a spot {x, y} (in %) for tables with 4+ opponents
-export default function Seat({ player, index, active, position, spot, side, rules, deathmatch }) {
+export default function Seat({ player, index, active, position, spot, side, rules, deathmatch, catchable, onCatch }) {
   const n = player.hand.length
   const shown = Math.min(n, position === 'arc' ? 6 : 10)
   const vertical = position === 'left' || position === 'right'
@@ -36,6 +36,13 @@ export default function Seat({ player, index, active, position, spot, side, rule
       style={spot ? { left: `${spot.x}%`, top: `${spot.y}%` } : undefined}
     >
       <div className="seat-head">
+        {/* forgot to call UNO: first to hit Catch! makes them draw 2 */}
+        {catchable && (
+          <button className="catch-btn" onClick={onCatch} title={`${player.name} didn't call UNO!`}>
+            Catch!
+            <span className="catch-timer" />
+          </button>
+        )}
         <Avatar player={player} index={index} active={active} size={position === 'arc' ? 48 : 72} />
         <div className="seat-info">
           <div className="name-tag">{player.name}</div>
@@ -75,7 +82,7 @@ export default function Seat({ player, index, active, position, spot, side, rule
         {n > shown && <span className="fan-more" title={`${n} cards in hand`}>+{n - shown}</span>}
       </div>
 
-      {n === 1 && !player.out && <div className="uno-flag">UNO!</div>}
+      {n === 1 && !player.out && !catchable && <div className="uno-flag">UNO!</div>}
       {player.out && <div className="out-stamp">OUT</div>}
     </div>
   )

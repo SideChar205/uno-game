@@ -68,9 +68,11 @@ export function allowed(game, action, seat) {
     case 'PLAY':
     case 'DRAW':
     case 'PASS':
-    case 'CALL_UNO':
     case 'ROULETTE':
       return game.current === seat
+    case 'CALL_UNO':
+      return action.player === seat && (game.current === seat || game.unoCatch?.player === seat)
+    case 'CATCH':
     case 'JUMP':
       return action.player === seat
     default:

@@ -158,7 +158,7 @@ export const MODES = {
     points: [
       'Match the top card by color or by number/symbol.',
       'Wild Draw Four only when you have no card of the current color.',
-      'Press UNO! when you are about to play your second-to-last card.',
+      'Press UNO! when you are about to play your second-to-last card. Forget, and anyone who hits Catch! in time makes you draw 2.',
     ],
     name: 'Classic',
     tagline: 'The original 108-card game. Turn on house rules below.',
@@ -235,8 +235,8 @@ export const MODES = {
     ],
     points: [
       'Instead of drawing, hit the launcher: it fires 0 to 6 random cards.',
-      'Hitting the launcher always ends your turn.',
-      'Forget to call UNO? Hit the launcher twice.',
+      'Hit as often as you like, then play a card or pass.',
+      'Forget to call UNO and get caught? Hit the launcher twice.',
     ],
     name: 'Attack',
     tagline: 'No drawing: hit the card launcher instead. It might fire nothing... or a pile.',

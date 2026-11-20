@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { canPlay, canCallUno, freeDraw, canJumpIn, choicesNeeded, needsFlex, topCard, faceOf, colorsFor, activePlayers, DEATHMATCH_TURNS, handPoints } from '../game/rules.js'
-import { botMove, botJumpIn } from '../game/bot.js'
+import { canPlay, catchOpen, UNO_CATCH_MS, freeDraw, canJumpIn, choicesNeeded, needsFlex, topCard, faceOf, colorsFor, activePlayers, DEATHMATCH_TURNS, handPoints } from '../game/rules.js'
+import { botMove, botJumpIn, botCatch } from '../game/bot.js'
 import { MODES } from '../game/modes.js'
 import { face, otherSide, meta } from '../game/deck.js'
 import Card from './Card.jsx'
@@ -140,6 +140,27 @@ export default function Game({ game, dispatch, onRestart, onQuit, onBackToRoom, 
     const timer = setTimeout(() => dispatch(jump), JUMP_DELAY)
     return () => clearTimeout(timer)
   }, [game, over, rules.jumpIn, dispatch, runBots])
+
+  // Catch!: someone forgot to call UNO. The window runs on this browser's own clock (devices' clocks differ)
+  const catchKey = !over && catchOpen(game) ? game.unoCatch.key : null
+  const [catchShown, setCatchShown] = useState(null)
+  useEffect(() => {
+    if (!catchKey) return
+    setCatchShown(catchKey)
+    const t = setTimeout(() => setCatchShown(null), UNO_CATCH_MS)
+    return () => clearTimeout(t)
+  }, [catchKey])
+  const catchTarget = catchKey && catchShown === catchKey ? game.unoCatch.player : null
+
+  // bots: try to catch the forgetful player (sometimes they're too slow)
+  useEffect(() => {
+    if (!catchKey || !runBots) return
+    const plan = botCatch(game)
+    if (!plan || plan.delay > UNO_CATCH_MS) return
+    const timer = setTimeout(() => dispatch({ type: 'CATCH', player: plan.player }), plan.delay)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catchKey, runBots])
 
   // your own card points (only you see your full breakdown in Deathmatch)
   const myPoints = handPoints(game, players[viewer].hand)
@@ -291,6 +312,8 @@ export default function Game({ game, dispatch, onRestart, onQuit, onBackToRoom, 
               active={idx === game.current && !over}
               side={side}
               rules={rules}
+              catchable={catchTarget === idx && viewer !== idx}
+              onCatch={() => dispatch({ type: 'CATCH', player: viewer })}
             />
           ))}
         </div>
@@ -380,9 +403,10 @@ export default function Game({ game, dispatch, onRestart, onQuit, onBackToRoom, 
           </div>
           <div className="row">
             {jumpable.size > 0 && <span className="jump-hint">Same card! Jump in →</span>}
-            {myTurn && (game.saidUno || canCallUno(game, viewer)) && (
-              <button className={`btn uno${game.saidUno ? '' : ' pulse'}`} disabled={game.saidUno} onClick={() => dispatch({ type: 'CALL_UNO' })}>
-                {game.saidUno ? 'UNO called' : 'UNO!'}
+            {/* always here, so it never reminds you: press it before your second-to-last card, or right after if nobody caught you yet */}
+            {!over && !me.out && (
+              <button className="btn uno" disabled={myTurn && game.saidUno} onClick={() => dispatch({ type: 'CALL_UNO', player: viewer })}>
+                {myTurn && game.saidUno ? 'UNO called' : 'UNO!'}
               </button>
             )}
             {myTurn && game.drawnCardId !== null && (

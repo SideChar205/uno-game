@@ -60,7 +60,10 @@ When every card is in someone's hand and there is nothing left to draw, the game
   The winner's score is everyone else's points added up, and the others are ranked by their points.
 
 Classic rules: match the top card by color or by number/symbol, or play a Wild. Wild Draw Four only when you have no card
-of the current color. Press **UNO!** when you have 2 cards and are about to play one, or draw 2.
+of the current color. Press **UNO!** when you have 2 cards and are about to play one. The UNO! button is always on screen,
+so it never reminds you. Forget, and a **Catch!** button pops up on your name plate for everyone else for 5 seconds:
+the first to hit it makes you draw 2 (Attack: 2 launcher hits). You can still save yourself by pressing UNO! before
+anyone catches you. Bots forget about 1 time in 5, and they try to catch you too.
 Simplifications: the first card flipped is always a number card, and there is no score keeping across rounds.
 
 ## Where things are

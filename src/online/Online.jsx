@@ -361,7 +361,8 @@ function HostRoom({ name, onLeave, onRename }) {
   function hostDispatch(action) {
     setGame((g) => {
       if (!g) return g
-      const actor = action.type === 'JUMP' ? action.player : g.current
+      // jump-ins, catches and UNO calls can come from anyone at the table, not just the current player
+      const actor = ['JUMP', 'CATCH', 'CALL_UNO'].includes(action.type) ? (action.player ?? g.current) : g.current
       return actor === 0 || g.players[actor]?.isBot ? gameReducer(g, action) : g
     })
   }
