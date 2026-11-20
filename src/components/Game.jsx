@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { canPlay, canCallUno, canJumpIn, choicesNeeded, needsFlex, topCard, faceOf, colorsFor, activePlayers, DEATHMATCH_TURNS, handPoints } from '../game/rules.js'
+import { canPlay, canCallUno, freeDraw, canJumpIn, choicesNeeded, needsFlex, topCard, faceOf, colorsFor, activePlayers, DEATHMATCH_TURNS, handPoints } from '../game/rules.js'
 import { botMove, botJumpIn } from '../game/bot.js'
 import { MODES } from '../game/modes.js'
 import { face, otherSide, meta } from '../game/deck.js'
@@ -165,11 +165,12 @@ export default function Game({ game, dispatch, onRestart, onQuit, onBackToRoom, 
   // which of my cards can be played right now (or jumped in with)
   const playable = new Set(
     myTurn
-      ? me.hand.filter((c) => canPlay(c, game, me)).filter((c) => game.drawnCardId === null || c.id === game.drawnCardId).map((c) => c.id)
+      ? me.hand.filter((c) => canPlay(c, game, me)).filter((c) => freeDraw(game) || game.drawnCardId === null || c.id === game.drawnCardId).map((c) => c.id)
       : [],
   )
   const jumpable = new Set(!myTurn && !over && !me.out ? me.hand.filter((c) => canJumpIn(c, game, viewer)).map((c) => c.id) : [])
-  const mustDraw = myTurn && !game.roulette && game.drawnCardId === null && playable.size === 0
+  const free = freeDraw(game)
+  const mustDraw = myTurn && !game.roulette && (free || game.drawnCardId === null) && playable.size === 0
 
   // ---- playing a card: collect any choices it needs, then dispatch ----
   function proceed(sel) {
@@ -207,6 +208,7 @@ export default function Game({ game, dispatch, onRestart, onQuit, onBackToRoom, 
   else if (game.pending && game.deathmatch) status = playable.size ? `Stack a draw card, or take +${game.pending.amount} points` : `Take +${game.pending.amount} points`
   else if (game.pending) status = playable.size ? `Stack a draw card, or take +${game.pending.amount}` : `Take +${game.pending.amount}`
   else if (mustDraw && game.deathmatch) status = 'Deathmatch: no match, pass your turn'
+  else if (game.drawnCardId !== null && free) status = rules.launcher ? (playable.size ? 'Play a card, hit again, or pass' : 'Hit again, or pass') : playable.size ? 'Play a card, draw again, or pass' : 'Draw again, or pass'
   else if (game.drawnCardId !== null) status = 'Play the card you drew, or pass'
   else if (mustDraw) status = rules.launcher ? 'No match. Hit the launcher!' : 'No match. Draw a card'
   else status = passAndPlay ? `${current.name}'s turn` : 'Your turn'
@@ -298,14 +300,14 @@ export default function Game({ game, dispatch, onRestart, onQuit, onBackToRoom, 
           <DirectionRing direction={game.direction} />
 
           {rules.launcher ? (
-            <button className={`launcher${mustDraw ? ' hint' : ''}`} disabled={!myTurn || game.drawnCardId !== null} onClick={() => dispatch({ type: 'DRAW' })} title="Hit the launcher">
+            <button className={`launcher${mustDraw ? ' hint' : ''}`} disabled={!myTurn || (game.drawnCardId !== null && !free) || game.roulette} onClick={() => dispatch({ type: 'DRAW' })} title="Hit the launcher">
               <span className="launcher-dome">HIT</span>
               <span className="deck-count">{game.drawPile.length}</span>
             </button>
           ) : (
             <button
               className={`deck${mustDraw || (myTurn && game.pending) ? ' hint' : ''}`}
-              disabled={!myTurn || game.drawnCardId !== null || game.roulette}
+              disabled={!myTurn || (game.drawnCardId !== null && !free) || game.roulette}
               onClick={() => dispatch({ type: 'DRAW' })}
               title={game.pending ? `Take +${game.pending.amount}` : game.deathmatch ? 'Nothing to draw: pass' : 'Draw a card'}
             >

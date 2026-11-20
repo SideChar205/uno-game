@@ -183,7 +183,7 @@ export const MODES = {
     points: [
       'Stacking: answer a draw card with an equal or bigger one to pass the penalty on.',
       'Seven-O: a 7 swaps hands with a player you pick, a 0 moves every hand along.',
-      'No match? Keep drawing until you can play.',
+      'Draw as many cards as you like, then play or pass. Careful: hit the card limit and you are out.',
       'Reach the card limit (25 unless you change it) and you are out. Last one standing wins too.',
     ],
     name: 'No Mercy',
@@ -194,7 +194,7 @@ export const MODES = {
     rules: (settings = {}) => ({
       stacking: true,
       sevenO: true,
-      drawUntil: true,
+      drawUntil: false, // draw as many as you like, one at a time (careful: the card limit still knocks you out)
       mercy: settings.mercy ?? 25, // 0 = no limit
       handSize: settings.handSize ?? 7,
       jumpIn: !!settings.jumpIn,

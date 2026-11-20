@@ -36,9 +36,13 @@ export function canCallUno(s, playerIndex) {
   const player = s.players[playerIndex]
   if (!player || s.saidUno) return false
   return player.hand.some(
-    (c) => canPlay(c, s, player) && (s.drawnCardId === null || s.drawnCardId === undefined || c.id === s.drawnCardId) && cardsLeftAfter(c, s, player) === 1,
+    (c) => canPlay(c, s, player) && (freeDraw(s) || s.drawnCardId === null || s.drawnCardId === undefined || c.id === s.drawnCardId) && cardsLeftAfter(c, s, player) === 1,
   )
 }
+
+// Free drawing (every mode): on your turn draw as many cards as you like (Attack: hit the launcher as often as you like),
+// play any playable card, or pass once you've drawn. Only Classic's optional "Draw until you can play" works differently.
+export const freeDraw = (s) => !s.rules.drawUntil
 
 export function canPlay(card, s, player) {
   if (s.roulette) return false
@@ -211,6 +215,7 @@ function advance(s, steps) {
   s.current = i
   s.turn += 1
   s.drawnCardId = null
+  s.drawsThisTurn = 0
   s.saidUno = false
   setView(s)
 }
@@ -354,7 +359,7 @@ function play(s, cardId, opts = {}) {
   const index = player.hand.findIndex((c) => c.id === cardId)
   if (index === -1) return null
   const card = player.hand[index]
-  if (s.drawnCardId !== null && card.id !== s.drawnCardId) return null
+  if (!freeDraw(s) && s.drawnCardId !== null && card.id !== s.drawnCardId) return null
   if (!canPlay(card, s, player)) return null
 
   const f = faceOf(s, card)
@@ -579,7 +584,7 @@ export function gameReducer(state, action) {
         advance(s, 1)
         return s
       }
-      if (s.drawnCardId !== null) return state // already drew this turn
+      if (s.drawnCardId !== null && !freeDraw(s)) return state // already drew this turn (free drawing: draw again)
 
       // Deathmatch: nothing to draw, so "draw" means pass
       if (s.deathmatch) {
@@ -594,12 +599,17 @@ export function gameReducer(state, action) {
         addLog(s, `${player.name}'s power recharges`)
       }
 
-      // Attack: hit the launcher instead of drawing. Your turn ends either way.
+      // Attack: hit the launcher instead of drawing. You keep your turn: hit again, play a card, or pass.
       if (s.rules.launcher) {
         const n = hit(s, s.current)
         addLog(s, `${player.name} hits the launcher: ${n ? `${n} card${n === 1 ? '' : 's'}!` : 'nothing!'}`)
         addEvent(s, 'launch', n ? `+${n}` : 'Phew!')
-        advance(s, 1)
+        if (player.out) {
+          advance(s, 1)
+          return s
+        }
+        s.drawnCardId = -1 // "has drawn this turn" (lets you pass)
+        s.drawsThisTurn = (s.drawsThisTurn ?? 0) + 1
         return s
       }
 
@@ -617,6 +627,13 @@ export function gameReducer(state, action) {
       }
       const card = got[got.length - 1]
       const count = got.length === 1 ? 'a card' : `${got.length} cards`
+      if (freeDraw(s)) {
+        // keep your turn: play a card, draw again, or pass
+        s.drawnCardId = card.id // also marks "has drawn this turn", which allows passing
+        s.drawsThisTurn = (s.drawsThisTurn ?? 0) + 1
+        addLog(s, `${player.name} draws ${s.drawsThisTurn > 1 ? `again (${s.drawsThisTurn} cards)` : 'a card'}`)
+        return s
+      }
       if (canPlay(card, s, player)) {
         s.drawnCardId = card.id
         addLog(s, `${player.name} draws ${count}`)

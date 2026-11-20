@@ -1,6 +1,6 @@
 // Computer players: each function returns the action a bot wants to take
 import { meta, face, otherSide } from './deck.js'
-import { canPlay, canJumpIn, choicesNeeded, needsFlex, faceOf, colorsFor, activePlayers } from './rules.js'
+import { canPlay, canJumpIn, choicesNeeded, needsFlex, faceOf, colorsFor, activePlayers, freeDraw } from './rules.js'
 
 // lower = played first: attack cards, then numbers, wilds saved for last
 function priority(s, card) {
@@ -49,7 +49,7 @@ export function botMove(s) {
   if (s.roulette) return { type: 'ROULETTE', color: favoriteColor(s, me.hand) }
 
   let options = me.hand.filter((c) => canPlay(c, s, me))
-  if (s.drawnCardId !== null) options = options.filter((c) => c.id === s.drawnCardId)
+  if (s.drawnCardId !== null && !freeDraw(s)) options = options.filter((c) => c.id === s.drawnCardId)
   if (options.length === 0) return s.drawnCardId !== null ? { type: 'PASS' } : { type: 'DRAW' }
 
   options.sort((a, b) => priority(s, a) - priority(s, b))
