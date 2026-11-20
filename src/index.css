@@ -1418,3 +1418,63 @@ h2.plain { font-size: 20px; text-transform: none; letter-spacing: 0; color: var(
 .invite-note b { color: #fff; }
 .knock { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(251, 191, 36, .12); border: 1px solid rgba(251, 191, 36, .55); display: flex; flex-direction: column; gap: 8px; font-size: 13px; animation: feedIn .3s ease; }
 .knock-btns { display: flex; gap: 8px; }
+
+/* ================= Name step after opening an invite link ================= */
+.join-prompt { text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+.invite-hello { margin: 0; font-size: 18px; font-weight: 800; color: #fde68a; }
+.join-prompt h2 { margin: 4px 0 0; }
+.name-big { font-size: 22px; text-align: center; padding: 14px; }
+.join-prompt .muted.small { margin: 0; }
+.rename-btn { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, .25); color: #cbd5e1; }
+.rename-btn:hover { background: rgba(255, 255, 255, .1); }
+
+/* ================= Opponent seats: one tidy name plate ================= */
+.seat .seat-info {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 7px 10px 8px; border-radius: 14px; min-width: 96px;
+  background: rgba(10, 14, 26, .72); box-shadow: 0 6px 16px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(255, 255, 255, .08);
+  backdrop-filter: blur(3px);
+}
+.seat.top .seat-info { align-items: flex-start; }
+.seat .name-tag, .seat.left .name-tag, .seat.right .name-tag, .seat.arc .name-tag {
+  background: none; padding: 0; border-radius: 0; font-size: 15px; font-weight: 800; max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+}
+.seat-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
+/* card count: a white pill with a little card icon */
+.seat .count-badge, .seat.arc .count-badge {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; min-width: 0; padding: 0 9px 0 7px; margin: 0;
+  border-radius: 999px; background: #fff; color: #111; font-size: 14px; font-weight: 900; box-shadow: 0 2px 0 rgba(0, 0, 0, .25);
+}
+.cnt-icon { width: 10px; height: 14px; border-radius: 2px; background: var(--back); border: 1.5px solid #fff; box-shadow: 0 0 0 1px #111, 2px -2px 0 -1px #111; flex: none; }
+.seat .count-badge.danger { background: #fee2e2; color: #b91c1c; }
+/* Deathmatch penalty: a clear red pill */
+.seat .penalty-chip {
+  margin: 0; align-self: center; height: 22px; display: inline-flex; align-items: center; padding: 0 9px;
+  border-radius: 999px; background: #dc2626; color: #fff; font-size: 12px; font-weight: 900; letter-spacing: .02em;
+  border: 0; box-shadow: 0 2px 0 #7f1d1d;
+}
+.seat.active .seat-info { box-shadow: 0 0 0 2px #fde68a, 0 0 20px rgba(253, 230, 138, .45), 0 6px 16px rgba(0, 0, 0, .35); }
+.seat .thinking { margin-top: -2px; }
+/* more cards than the fan shows */
+.fan { position: relative; }
+.fan-more {
+  position: absolute; z-index: 30; padding: 2px 7px; border-radius: 999px; background: #111; color: #fff;
+  font-size: 12px; font-weight: 900; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .4);
+  right: -6px; bottom: -6px;
+}
+.fan.vertical .fan-more { right: auto; left: 50%; bottom: -14px; transform: translateX(-50%); }
+
+/* your own corner uses the same name plate */
+.me-id > div:last-child {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 7px 12px 8px; border-radius: 14px;
+  background: rgba(10, 14, 26, .72); box-shadow: 0 6px 16px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(255, 255, 255, .08);
+}
+.me-id .name-tag { background: none; padding: 0; border-radius: 0; font-size: 15px; font-weight: 800; }
+.me-id .count-badge {
+  display: inline-flex; align-items: center; gap: 5px; height: 24px; min-width: 0; padding: 0 9px 0 7px; margin: 0;
+  border-radius: 999px; background: #fff; color: #111; font-size: 14px; font-weight: 900; box-shadow: 0 2px 0 rgba(0, 0, 0, .25);
+}
+.me-id .count-badge.danger { background: #fee2e2; color: #b91c1c; }
+.cnt-icon { background: linear-gradient(135deg, #ef4444 0 50%, #1d4ed8 50%); }
+
+.end-guest { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 6px; }

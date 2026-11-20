@@ -54,11 +54,14 @@ const cleanName = (n) => String(n ?? '').replace(/\s+/g, ' ').trim().slice(0, 12
 export default function Online({ onBack }) {
   const [invite] = useState(readInvite)
   const fromLink = invite.secret || invite.code
-  // opening an invite link joins the room at once: with your saved name, or a fun random one you can change in the room
-  const [name, setName] = useState(() => savedName() || (fromLink ? randomBotName() : ''))
+  const [name, setName] = useState(savedName)
   const [code, setCode] = useState(invite.code)
   // { role: 'host' } or { role: 'guest', code, secret }
-  const [room, setRoom] = useState(() => (invite.secret ? { role: 'guest', code: '', secret: invite.secret } : invite.code ? { role: 'guest', code: invite.code } : null))
+  const [room, setRoom] = useState(null)
+  // opening an invite link first asks for your name (your last one is filled in), then joins
+  const [pendingInvite, setPendingInvite] = useState(() =>
+    invite.secret ? { role: 'guest', code: '', secret: invite.secret } : invite.code ? { role: 'guest', code: invite.code } : null,
+  )
   useEffect(() => saveName(name), [name])
 
   function leave() {
@@ -67,6 +70,41 @@ export default function Online({ onBack }) {
   }
 
   const player = name.trim() || 'Player'
+  if (pendingInvite && !room) {
+    const go = () => {
+      if (!cleanName(name)) return
+      setName(cleanName(name))
+      setRoom(pendingInvite)
+      setPendingInvite(null)
+    }
+    return (
+      <div className="setup-page">
+        <ColorBlobs />
+        <Particles />
+        <div className="setup online-menu">
+          <h1 className="title compact">UNO <span className="title-tag">Online</span></h1>
+          <div className="panel join-prompt">
+            <p className="invite-hello">🎉 You're invited to a UNO room!</p>
+            <h2>What's your name?</h2>
+            <input
+              className="text-input name-big"
+              autoFocus
+              maxLength={12}
+              value={name}
+              placeholder="e.g. Ana"
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && go()}
+            />
+            <p className="muted small">This is how the other players will see you. You can change it later in the room.</p>
+            <button className="btn wide" disabled={!cleanName(name)} onClick={go}>
+              Join the room
+            </button>
+            <button className="btn-ghost back" onClick={() => { setPendingInvite(null); onBack() }}>← Not now</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (room?.role === 'host') return <HostRoom name={player} onLeave={leave} onRename={setName} />
   if (room?.role === 'guest') return <GuestRoom name={player} code={room.code} secret={room.secret} onLeave={leave} onRename={setName} />
 
@@ -307,6 +345,14 @@ function HostRoom({ name, onLeave, onRename }) {
     })
   }, [seats, game, mode, settings, code, notices])
 
+  // after a game: everyone back to the waiting room. Players who left during the game (now bots) lose their seat,
+  // and everyone has to ready up again for the next game.
+  function backToRoom() {
+    setSeats((s) => s.filter((x, i) => i === 0 || x.peer || (x.isBot && !game?.players[i]?.name.endsWith('(bot)'))).map((x, i) => (i === 0 || x.isBot ? x : { ...x, ready: false })))
+    setGame(null)
+    notice('Back in the room. Ready up for the next game!')
+  }
+
   function start() {
     setGame(gameReducer(null, { type: 'NEW', seats: seats.map(({ name, isBot }) => ({ name, isBot })), mode, settings }))
   }
@@ -321,7 +367,7 @@ function HostRoom({ name, onLeave, onRename }) {
   }
 
   if (game) {
-    return <Game game={game} dispatch={hostDispatch} onRestart={start} onQuit={onLeave} online={{ seat: 0, isHost: true, code }} />
+    return <Game game={game} dispatch={hostDispatch} onRestart={start} onQuit={onLeave} onBackToRoom={backToRoom} online={{ seat: 0, isHost: true, code }} />
   }
 
   return (
@@ -643,7 +689,7 @@ function Lobby({ code, status, error, seats, you, isHost, connecting = {}, faile
                   <span className="lobby-name">
                     {s.name}
                     {i === you && onRename && (
-                      <button className="rename-btn" title="Change your name" onClick={() => { setDraft(s.name); setEditing(true) }}>✎</button>
+                      <button className="rename-btn" title="Change your name" onClick={() => { setDraft(s.name); setEditing(true) }}>✎ Edit</button>
                     )}
                   </span>
                 )}

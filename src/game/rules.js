@@ -310,7 +310,7 @@ export function newGame(seats, modeKey = 'classic', settings = {}) {
     drawPile: shuffle(mode.deck()),
     discard: [],
     currentColor: null,
-    current: 0,
+    current: Math.floor(Math.random() * seats.length), // a random player starts (not always the host)
     direction: 1, // 1 = clockwise, -1 = counter-clockwise
     drawnCardId: null, // set after drawing a playable card: you may play it or pass
     saidUno: false,
@@ -342,6 +342,7 @@ export function newGame(seats, modeKey = 'classic', settings = {}) {
   s.currentColor = face(first, 'light').color
 
   addLog(s, `${mode.name} game started. First card: ${label(face(first, 'light'))}`)
+  addLog(s, `${s.players[s.current].name} goes first`)
   setView(s)
   return s
 }

@@ -37,7 +37,7 @@ function arcSeat(k, total) {
   }
 }
 
-export default function Game({ game, dispatch, onRestart, onQuit, online }) {
+export default function Game({ game, dispatch, onRestart, onQuit, onBackToRoom, online }) {
   // a card waiting for choices (color, swap target, flex) before it is played
   const [choice, setChoice] = useState(null)
   // which card in your hand the mouse is over (the hand spreads around it)
@@ -368,6 +368,7 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
               <div className="name-tag">{me.name}</div>
               <div className="seat-meta">
                 <div key={`count-${me.hand.length}`} title={`${me.hand.length} cards in hand`} className={`count-badge${rules.mercy && me.hand.length >= rules.mercy - 5 ? ' danger' : ''}`}>
+                  <span className="cnt-icon" aria-hidden="true" />
                   {me.hand.length}
                 </div>
                 {rules.flex && <PowerBadge on={me.power} />}
@@ -515,6 +516,8 @@ export default function Game({ game, dispatch, onRestart, onQuit, online }) {
           reason={game.endReason}
           onRestart={onRestart}
           onQuit={onQuit}
+          onBackToRoom={onBackToRoom}
+          online={online}
         />
       )}
     </div>

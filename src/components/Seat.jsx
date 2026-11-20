@@ -42,6 +42,7 @@ export default function Seat({ player, index, active, position, spot, side, rule
           <div className="seat-meta">
             {/* key={n} remounts the badge when the count changes, replaying the bump animation */}
             <div key={`count-${n}`} className={`count-badge${danger ? ' danger' : ''}`} title={danger ? `Out at ${rules.mercy} cards` : `${n} cards in hand`}>
+              <span className="cnt-icon" aria-hidden="true" />
               {n}
             </div>
             {rules.flex && <PowerBadge on={player.power} />}
@@ -49,7 +50,7 @@ export default function Seat({ player, index, active, position, spot, side, rule
           {/* Deathmatch: opponents only show their penalty points; their card points stay secret */}
           {deathmatch && player.penalty > 0 && (
             <span key={`pen-${player.penalty}`} className="penalty-chip" title="Penalty points">
-              +{player.penalty} pen
+              ☠ +{player.penalty} pts
             </span>
           )}
           {active && player.isBot && <div className="thinking"><span /><span /><span /></div>}
@@ -71,6 +72,7 @@ export default function Seat({ player, index, active, position, spot, side, rule
             />
           )
         })}
+        {n > shown && <span className="fan-more" title={`${n} cards in hand`}>+{n - shown}</span>}
       </div>
 
       {n === 1 && !player.out && <div className="uno-flag">UNO!</div>}

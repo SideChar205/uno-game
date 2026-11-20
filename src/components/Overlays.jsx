@@ -162,7 +162,7 @@ export function ChoiceDialog({ kicker, title, options, onCancel }) {
 }
 
 // standings: set when the game went to Deathmatch (or was decided on points) - see scoreGame in rules.js
-export function GameOver({ winner, players, standings, winnerScore, reason, onRestart, onQuit }) {
+export function GameOver({ winner, players, standings, winnerScore, reason, onRestart, onQuit, onBackToRoom, online }) {
   return (
     <div className="overlay">
       <Confetti />
@@ -195,15 +195,23 @@ export function GameOver({ winner, players, standings, winnerScore, reason, onRe
             <p className="muted small points-key">Points: number = face value · wild = 10 · +N = N · other actions = 5</p>
           </>
         )}
-        {onRestart ? (
+        {online ? (
+          online.isHost ? (
+            <div className="row">
+              <button className="btn" onClick={onBackToRoom}>Back to the room</button>
+              <button className="btn-ghost" onClick={onRestart}>Rematch now</button>
+              <button className="btn-ghost" onClick={onQuit}>Close room</button>
+            </div>
+          ) : (
+            <div className="end-guest">
+              <span className="muted">Waiting for the host: everyone goes back to the room together, or straight into a rematch.</span>
+              <button className="btn-ghost" onClick={onQuit}>Leave room</button>
+            </div>
+          )
+        ) : (
           <div className="row">
             <button className="btn" onClick={onRestart}>Play again</button>
             <button className="btn-ghost" onClick={onQuit}>Change players</button>
-          </div>
-        ) : (
-          <div className="row">
-            <span className="muted">Waiting for the host to start the next game…</span>
-            <button className="btn-ghost" onClick={onQuit}>Leave</button>
           </div>
         )}
       </div>
