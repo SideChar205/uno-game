@@ -1394,3 +1394,20 @@ h2.plain { font-size: 20px; text-transform: none; letter-spacing: 0; color: var(
 
 /* each card tilts around its own middle, so what you see lines up with what you point at */
 .hand-slot { transform-origin: 50% 50%; }
+
+/* ================= Online waiting room: ready, rename, room feed ================= */
+.ready-chip { margin-left: auto; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; color: #fecaca; background: rgba(239, 68, 68, .18); border: 1px solid rgba(239, 68, 68, .45); white-space: nowrap; }
+.ready-chip.on { color: #052e16; background: #4ade80; border-color: #22c55e; }
+.lobby-seats li .ready-chip + .remove, .lobby-seats li .tag + .remove { margin-left: 6px; }
+.remove.confirm { width: auto; padding: 2px 8px; border-radius: 8px; background: #ef4444; color: #fff; font-size: 12px; font-weight: 800; }
+.rename-btn { margin-left: 6px; border: 0; background: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 0 2px; }
+.rename-btn:hover { color: #fff; }
+.rename-input { flex: 1; min-width: 0; padding: 4px 8px; font-size: 14px; }
+.room-feed { list-style: none; margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .05); display: grid; gap: 3px; font-size: 12.5px; color: #cbd5e1; }
+.room-feed li { animation: feedIn .3s ease; }
+.room-feed li:first-child { color: #fff; font-weight: 700; }
+.room-feed li::before { content: '• '; color: var(--accent); }
+@keyframes feedIn { from { opacity: 0; transform: translateY(-4px); } }
+.ready-btn { background: linear-gradient(180deg, #4ade80, #16a34a); color: #052e16; }
+.ready-btn.is-ready { background: rgba(74, 222, 128, .15); color: #bbf7d0; box-shadow: inset 0 0 0 2px #22c55e; }
+.start-anyway { display: block; margin: 6px auto 0; }

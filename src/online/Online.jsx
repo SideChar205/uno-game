@@ -21,12 +21,30 @@ const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hos
 const shareOrigin = isLocal && typeof __LAN_URL__ !== 'undefined' ? __LAN_URL__ : window.location.origin
 const inviteLink = (code) => `${shareOrigin}${window.location.pathname}?room=${code}`
 
+// your name is remembered in this browser, so invite links can join you straight away
+const NAME_KEY = 'uno-player-name'
+const savedName = () => {
+  try {
+    return localStorage.getItem(NAME_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+const saveName = (n) => {
+  try {
+    if (n.trim()) localStorage.setItem(NAME_KEY, n.trim().slice(0, 12))
+  } catch { /* storage blocked: nothing to remember */ }
+}
+const cleanName = (n) => String(n ?? '').replace(/\s+/g, ' ').trim().slice(0, 12)
+
 // ---------------- Menu: your name, then create or join ----------------
 export default function Online({ onBack }) {
   const fromLink = cleanCode(new URLSearchParams(window.location.search).get('room') ?? '')
-  const [name, setName] = useState('')
+  // opening an invite link joins the room at once: with your saved name, or a fun random one you can change in the room
+  const [name, setName] = useState(() => savedName() || (fromLink.length === 5 ? randomBotName() : ''))
   const [code, setCode] = useState(fromLink)
-  const [room, setRoom] = useState(null) // { role: 'host' } or { role: 'guest', code }
+  const [room, setRoom] = useState(() => (fromLink.length === 5 ? { role: 'guest', code: fromLink } : null)) // { role: 'host' } or { role: 'guest', code }
+  useEffect(() => saveName(name), [name])
 
   function leave() {
     setRoom(null)
@@ -34,8 +52,8 @@ export default function Online({ onBack }) {
   }
 
   const player = name.trim() || 'Player'
-  if (room?.role === 'host') return <HostRoom name={player} onLeave={leave} />
-  if (room?.role === 'guest') return <GuestRoom name={player} code={room.code} onLeave={leave} />
+  if (room?.role === 'host') return <HostRoom name={player} onLeave={leave} onRename={setName} />
+  if (room?.role === 'guest') return <GuestRoom name={player} code={room.code} onLeave={leave} onRename={setName} />
 
   return (
     <div className="setup-page">
@@ -78,12 +96,15 @@ export default function Online({ onBack }) {
 }
 
 // ---------------- Host ----------------
-function HostRoom({ name, onLeave }) {
+function HostRoom({ name, onLeave, onRename }) {
   const [code] = useState(makeCode)
   const [status, setStatus] = useState('connecting') // connecting | open | error
   const [error, setError] = useState(null)
   // seat 0 is always the host. id = the player's browser id (see playerId), used to let them rejoin
-  const [seats, setSeats] = useState(() => [{ name, isBot: false, peer: null, id: playerId() }])
+  const [seats, setSeats] = useState(() => [{ name, isBot: false, peer: null, id: playerId(), ready: true }])
+  // what just happened in the room ("Ana joined", "Ben is ready"...), shown to everyone
+  const [notices, setNotices] = useState([])
+  const notice = (text) => setNotices((n) => [{ id: `${Date.now()}-${Math.random()}`, text }, ...n].slice(0, 5))
   const [mode, setMode] = useState('classic')
   const [allSettings, setAllSettings] = useState(allDefaultSettings) // each mode keeps its own settings
   const settings = allSettings[mode] ?? {}
@@ -118,6 +139,7 @@ function HostRoom({ name, onLeave }) {
       const idx = seats.findIndex((x) => x.peer === peerId)
       if (idx < 0) return
       if (!game) {
+        notice(`${seats[idx].name} left the room`)
         setSeats((s) => s.filter((x) => x.peer !== peerId))
         return
       }
@@ -199,8 +221,22 @@ function HostRoom({ name, onLeave }) {
 
           if (game) return conn.send({ type: 'refused', reason: 'This game has already started. Only players from this game can rejoin, from the same browser they played on.' })
           if (seats.length >= MODES[mode].players.max) return conn.send({ type: 'refused', reason: 'The room is full.' })
-          const guestName = String(msg.name ?? '').slice(0, 12) || 'Guest'
-          setSeats((s) => (s.some((x) => x.peer === conn.peer) ? s : [...s, { name: guestName, isBot: false, peer: conn.peer, id }]))
+          // two players with the same name get a number
+          let guestName = cleanName(msg.name) || 'Guest'
+          for (let k = 2; seats.some((x) => x.name === guestName); k++) guestName = `${cleanName(msg.name).slice(0, 9) || 'Guest'} ${k}`
+          if (!seats.some((x) => x.peer === conn.peer)) notice(`${guestName} joined the room`)
+          setSeats((s) => (s.some((x) => x.peer === conn.peer) ? s : [...s, { name: guestName, isBot: false, peer: conn.peer, id, ready: false }]))
+        } else if (msg.type === 'ready' && !game) {
+          const i = seats.findIndex((x) => x.peer === conn.peer)
+          if (i <= 0 || seats[i].ready === !!msg.ready) return
+          notice(msg.ready ? `${seats[i].name} is ready` : `${seats[i].name} isn't ready yet`)
+          setSeats((s) => s.map((x, j) => (j === i ? { ...x, ready: !!msg.ready } : x)))
+        } else if (msg.type === 'rename' && !game) {
+          const i = seats.findIndex((x) => x.peer === conn.peer)
+          const next = cleanName(msg.name)
+          if (i <= 0 || !next || next === seats[i].name || seats.some((x) => x.name === next)) return
+          notice(`${seats[i].name} is now ${next}`)
+          setSeats((s) => s.map((x, j) => (j === i ? { ...x, name: next } : x)))
         } else if (msg.type === 'action') {
           const seat = seats.findIndex((x) => x.peer === conn.peer)
           // only accept moves that this guest is allowed to make right now
@@ -224,9 +260,9 @@ function HostRoom({ name, onLeave }) {
       const conn = s.peer && conns.current.get(s.peer)
       if (!conn?.open) return
       if (game) conn.send({ type: 'state', state: viewFor(game, i), seat: i, code })
-      else conn.send({ type: 'lobby', seats: seats.map(({ name, isBot }) => ({ name, isBot })), you: i, mode, settings, code })
+      else conn.send({ type: 'lobby', seats: seats.map(({ name, isBot, ready }) => ({ name, isBot, ready: isBot || !!ready })), you: i, mode, settings, code, notices })
     })
-  }, [seats, game, mode, settings, code])
+  }, [seats, game, mode, settings, code, notices])
 
   function start() {
     setGame(gameReducer(null, { type: 'NEW', seats: seats.map(({ name, isBot }) => ({ name, isBot })), mode, settings }))
@@ -259,11 +295,20 @@ function HostRoom({ name, onLeave }) {
       settings={settings}
       setMode={(m) => !MODES[m].soon && seats.length <= MODES[m].players.max && setMode(m)}
       setSettings={setSettings}
-      onAddBot={() => setSeats((s) => [...s, { name: randomBotName(s.map((x) => x.name)), isBot: true, peer: null }])}
+      notices={notices}
+      onRename={(next) => {
+        next = cleanName(next)
+        if (!next || seats.some((x, j) => j > 0 && x.name === next)) return
+        if (next !== seats[0].name) notice(`${seats[0].name} is now ${next}`)
+        setSeats((s) => s.map((x, j) => (j === 0 ? { ...x, name: next } : x)))
+        onRename(next)
+      }}
+      onAddBot={() => setSeats((s) => [...s, { name: randomBotName(s.map((x) => x.name)), isBot: true, peer: null, ready: true }])}
       onRemove={(i) => {
         const seat = seats[i]
+        notice(seat.isBot ? `${seat.name} (bot) removed` : `The host removed ${seat.name}`)
         if (seat.peer) {
-          conns.current.get(seat.peer)?.send({ type: 'refused', reason: 'The host removed you from the room.' })
+          conns.current.get(seat.peer)?.send({ type: 'refused', reason: 'The host removed you from the room.', kicked: true })
           setTimeout(() => conns.current.get(seat.peer)?.close(), 300)
         }
         setSeats((s) => s.filter((_, j) => j !== i))
@@ -275,7 +320,7 @@ function HostRoom({ name, onLeave }) {
 }
 
 // ---------------- Guest ----------------
-function GuestRoom({ name, code, onLeave }) {
+function GuestRoom({ name, code, onLeave, onRename }) {
   const [attempt, setAttempt] = useState(0) // bump to try again
   const [status, setStatus] = useState('connecting') // connecting | lobby | game | closed | error
   const [phase, setPhase] = useState('server') // server -> host
@@ -285,6 +330,8 @@ function GuestRoom({ name, code, onLeave }) {
   const wasPlaying = useRef(false) // lost the connection mid-game? then offer to rejoin
   const conn = useRef(null)
   const phaseRef = useRef('server')
+  const nameRef = useRef(name) // renaming in the lobby doesn't reconnect
+  nameRef.current = name
 
   useEffect(() => {
     phaseRef.current = 'server'
@@ -321,7 +368,7 @@ function GuestRoom({ name, code, onLeave }) {
       conn.current = c
       c.on('open', () => {
         lastHeard = Date.now()
-        c.send({ type: 'hello', name, id: playerId() })
+        c.send({ type: 'hello', name: nameRef.current, id: playerId() })
       })
       c.on('data', (msg) => {
         lastHeard = Date.now()
@@ -359,7 +406,7 @@ function GuestRoom({ name, code, onLeave }) {
       clearTimeout(giveUp)
       peer.destroy()
     }
-  }, [code, name, attempt])
+  }, [code, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = (action) => conn.current?.open && conn.current.send({ type: 'action', action })
 
@@ -367,7 +414,26 @@ function GuestRoom({ name, code, onLeave }) {
     return <Game game={view.state} dispatch={send} onRestart={null} onQuit={onLeave} online={{ seat: view.seat, isHost: false, code }} />
   }
   if (status === 'lobby' && lobby) {
-    return <Lobby code={code} status="open" seats={lobby.seats} you={lobby.you} mode={lobby.mode} settings={lobby.settings} onLeave={onLeave} />
+    const message = (m) => conn.current?.open && conn.current.send(m)
+    return (
+      <Lobby
+        code={code}
+        status="open"
+        seats={lobby.seats}
+        you={lobby.you}
+        mode={lobby.mode}
+        settings={lobby.settings}
+        notices={lobby.notices ?? []}
+        onReady={(ready) => message({ type: 'ready', ready })}
+        onRename={(next) => {
+          next = cleanName(next)
+          if (!next) return
+          message({ type: 'rename', name: next })
+          onRename(next)
+        }}
+        onLeave={onLeave}
+      />
+    )
   }
 
   return (
@@ -415,8 +481,17 @@ function GuestRoom({ name, code, onLeave }) {
 }
 
 // ---------------- Lobby (shared by host and guests) ----------------
-function Lobby({ code, status, error, seats, you, isHost, connecting = {}, failedJoins = {}, mode, settings, setMode, setSettings, onAddBot, onRemove, onStart, onLeave }) {
+function Lobby({ code, status, error, seats, you, isHost, connecting = {}, failedJoins = {}, mode, settings, setMode, setSettings, notices = [], onReady, onRename, onAddBot, onRemove, onStart, onLeave }) {
   const [copied, setCopied] = useState(null)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [confirmKick, setConfirmKick] = useState(null)
+  const me = seats[you]
+  const notReady = seats.filter((s) => !s.isBot && !s.ready)
+  const finishRename = () => {
+    if (draft.trim() && draft.trim() !== me?.name) onRename?.(draft)
+    setEditing(false)
+  }
   function copy(text, what) {
     navigator.clipboard?.writeText(text)
     setCopied(what)
@@ -464,13 +539,43 @@ function Lobby({ code, status, error, seats, you, isHost, connecting = {}, faile
             {seats.map((s, i) => (
               <li key={`${i}-${s.name}`} style={{ '--i': i }}>
                 <Avatar player={s} index={i} size={36} />
-                <span className="lobby-name">{s.name}</span>
+                {i === you && editing ? (
+                  <input
+                    className="text-input rename-input"
+                    autoFocus
+                    maxLength={12}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onBlur={finishRename}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') finishRename()
+                      if (e.key === 'Escape') setEditing(false)
+                    }}
+                  />
+                ) : (
+                  <span className="lobby-name">
+                    {s.name}
+                    {i === you && onRename && (
+                      <button className="rename-btn" title="Change your name" onClick={() => { setDraft(s.name); setEditing(true) }}>✎</button>
+                    )}
+                  </span>
+                )}
                 {i === 0 && <span className="tag">HOST</span>}
                 {i === you && <span className="tag you">YOU</span>}
                 {s.isBot && <span className="tag">BOT</span>}
-                {isHost && i > 0 && (
-                  <button className="remove" onClick={() => onRemove(i)} title={s.isBot ? 'Remove bot' : 'Remove player'}>✕</button>
+                {!s.isBot && i > 0 && (
+                  <span className={`ready-chip${s.ready ? ' on' : ''}`}>{s.ready ? '✓ Ready' : 'Not ready'}</span>
                 )}
+                {isHost && i > 0 &&
+                  (confirmKick === i ? (
+                    <button className="remove confirm" onClick={() => { onRemove(i); setConfirmKick(null) }} onBlur={() => setConfirmKick(null)} autoFocus>
+                      Remove?
+                    </button>
+                  ) : (
+                    <button className="remove" onClick={() => (s.isBot ? onRemove(i) : setConfirmKick(i))} title={s.isBot ? 'Remove bot' : 'Remove player from the room'}>
+                      ✕
+                    </button>
+                  ))}
               </li>
             ))}
             {empty > 0 && (
@@ -495,13 +600,37 @@ function Lobby({ code, status, error, seats, you, isHost, connecting = {}, faile
               </p>
             ))}
 
+          {notices.length > 0 && (
+            <ul className="room-feed">
+              {notices.slice(0, 3).map((n) => (
+                <li key={n.id}>{n.text}</li>
+              ))}
+            </ul>
+          )}
+
           <div className="lobby-actions">
             {isHost ? (
-              <button className="btn wide" disabled={seats.length < 2 || status !== 'open'} onClick={onStart}>
-                {seats.length < 2 ? 'Waiting for players…' : `Start ${MODES[mode].name}`}
-              </button>
+              <>
+                <button className="btn wide" disabled={seats.length < 2 || status !== 'open' || notReady.length > 0} onClick={onStart}>
+                  {seats.length < 2
+                    ? 'Waiting for players…'
+                    : notReady.length
+                      ? `Waiting for ${notReady.length === 1 ? notReady[0].name : `${notReady.length} players`} to be ready`
+                      : `Start ${MODES[mode].name}`}
+                </button>
+                {seats.length >= 2 && notReady.length > 0 && (
+                  <button className="btn-ghost small-btn start-anyway" onClick={onStart}>Start anyway</button>
+                )}
+              </>
             ) : (
-              <p className="waiting-host">Waiting for {seats[0]?.name ?? 'the host'} to start…</p>
+              <>
+                <button className={`btn wide ready-btn${me?.ready ? ' is-ready' : ''}`} onClick={() => onReady?.(!me?.ready)}>
+                  {me?.ready ? "✓ I'm ready (tap to undo)" : "I'm ready!"}
+                </button>
+                <p className="waiting-host">
+                  {me?.ready ? `Waiting for ${seats[0]?.name ?? 'the host'} to start…` : 'Tap Ready so the host knows you are set.'}
+                </p>
+              </>
             )}
             <button className="btn-ghost back" onClick={onLeave}>Leave room</button>
           </div>
