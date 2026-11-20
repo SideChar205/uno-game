@@ -19,7 +19,20 @@ const TIMEOUT = 8000 // ms of silence before someone counts as gone
 // so in that case we use your network address instead (worked out in vite.config.js).
 const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
 const shareOrigin = isLocal && typeof __LAN_URL__ !== 'undefined' ? __LAN_URL__ : window.location.origin
-const inviteLink = (code) => `${shareOrigin}${window.location.pathname}?room=${code}`
+// The invite link carries a long random secret, after '#' (browsers never send that part to any server).
+// Only people with the link can walk straight in; typing the short room code only knocks, and the host decides.
+const inviteLink = (secret) => `${shareOrigin}${window.location.pathname}#join=${secret}`
+const makeSecret = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(16)) // 128 bits: impossible to guess
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+// read an invite from the address (#join=SECRET, or an old ?room=CODE link), then clear it from the address bar
+function readInvite() {
+  const secret = (window.location.hash.match(/join=([A-Za-z0-9_-]{16,64})/) ?? [])[1] ?? null
+  const code = cleanCode(new URLSearchParams(window.location.search).get('room') ?? '')
+  if (secret || code) window.history.replaceState(null, '', window.location.pathname)
+  return { secret, code: code.length === 5 ? code : '' }
+}
 
 // your name is remembered in this browser, so invite links can join you straight away
 const NAME_KEY = 'uno-player-name'
@@ -39,11 +52,13 @@ const cleanName = (n) => String(n ?? '').replace(/\s+/g, ' ').trim().slice(0, 12
 
 // ---------------- Menu: your name, then create or join ----------------
 export default function Online({ onBack }) {
-  const fromLink = cleanCode(new URLSearchParams(window.location.search).get('room') ?? '')
+  const [invite] = useState(readInvite)
+  const fromLink = invite.secret || invite.code
   // opening an invite link joins the room at once: with your saved name, or a fun random one you can change in the room
-  const [name, setName] = useState(() => savedName() || (fromLink.length === 5 ? randomBotName() : ''))
-  const [code, setCode] = useState(fromLink)
-  const [room, setRoom] = useState(() => (fromLink.length === 5 ? { role: 'guest', code: fromLink } : null)) // { role: 'host' } or { role: 'guest', code }
+  const [name, setName] = useState(() => savedName() || (fromLink ? randomBotName() : ''))
+  const [code, setCode] = useState(invite.code)
+  // { role: 'host' } or { role: 'guest', code, secret }
+  const [room, setRoom] = useState(() => (invite.secret ? { role: 'guest', code: '', secret: invite.secret } : invite.code ? { role: 'guest', code: invite.code } : null))
   useEffect(() => saveName(name), [name])
 
   function leave() {
@@ -53,7 +68,7 @@ export default function Online({ onBack }) {
 
   const player = name.trim() || 'Player'
   if (room?.role === 'host') return <HostRoom name={player} onLeave={leave} onRename={setName} />
-  if (room?.role === 'guest') return <GuestRoom name={player} code={room.code} onLeave={leave} onRename={setName} />
+  if (room?.role === 'guest') return <GuestRoom name={player} code={room.code} secret={room.secret} onLeave={leave} onRename={setName} />
 
   return (
     <div className="setup-page">
@@ -98,6 +113,9 @@ export default function Online({ onBack }) {
 // ---------------- Host ----------------
 function HostRoom({ name, onLeave, onRename }) {
   const [code] = useState(makeCode)
+  const [secret] = useState(makeSecret)
+  const [knocks, setKnocks] = useState([]) // people who typed the room code and wait to be let in
+  const admit = useRef(null) // let a knocking guest in (set inside the connection effect)
   const [status, setStatus] = useState('connecting') // connecting | open | error
   const [error, setError] = useState(null)
   // seat 0 is always the host. id = the player's browser id (see playerId), used to let them rejoin
@@ -118,7 +136,8 @@ function HostRoom({ name, onLeave, onRename }) {
   live.current = { seats, game, mode }
 
   useEffect(() => {
-    const peer = new Peer(PREFIX + code, PEER_OPTIONS)
+    const peer = new Peer(PREFIX + code, { ...PEER_OPTIONS, secret })
+    const approved = new Set() // ids the host has let in
     peer.on('open', () => setStatus('open'))
     peer.on('error', (e) => {
       setError(e.type === 'network' ? "Couldn't reach the online service. Check your internet connection, then leave and create the room again." : `Connection problem (${e.type}).`)
@@ -193,6 +212,12 @@ function HostRoom({ name, onLeave, onRename }) {
         const { seats, game, mode } = live.current
         if (msg.type === 'hello') {
           const id = typeof msg.id === 'string' ? msg.id.slice(0, 80) : null
+          // came with just the room code: the host has to let them in (unless they're already a player here)
+          if (conn.via === 'code' && id && !approved.has(id) && !seats.some((x) => x.id === id)) {
+            const who = cleanName(msg.name) || 'Someone'
+            setKnocks((k) => (k.some((x) => x.peer === conn.peer) ? k : [...k, { peer: conn.peer, id, name: who }].slice(-4)))
+            return conn.send({ type: 'pending', host: seats[0].name })
+          }
           if (!id) return conn.send({ type: 'refused', reason: 'Please reload the page and try again.' })
           if (id === seats[0].id) return conn.send({ type: 'refused', reason: "You're already the host of this room in another tab." })
           const mine = seats.findIndex((x, i) => i > 0 && x.id === id) // a seat this browser had before
@@ -244,8 +269,26 @@ function HostRoom({ name, onLeave, onRename }) {
         }
       })
 
-      conn.on('close', () => handleLeave(conn.peer))
+      conn.on('close', () => {
+        setKnocks((k) => k.filter((x) => x.peer !== conn.peer))
+        handleLeave(conn.peer)
+      })
+      conn.helloAgain = (name, id) => conn.emit('data', { type: 'hello', name, id })
     })
+
+    // the host answers a knock: let them in (replays their hello) or send them away
+    admit.current = (knock, yes) => {
+      setKnocks((k) => k.filter((x) => x.peer !== knock.peer))
+      const conn = conns.current.get(knock.peer)
+      if (!conn) return
+      if (yes) {
+        approved.add(knock.id)
+        conn.helloAgain(knock.name, knock.id)
+      } else {
+        conn.send({ type: 'refused', reason: 'The host didn\'t let you in. Ask them for the invite link.' })
+        setTimeout(() => conn.close(), 300)
+      }
+    }
 
     return () => {
       clearInterval(beat)
@@ -296,6 +339,9 @@ function HostRoom({ name, onLeave, onRename }) {
       setMode={(m) => !MODES[m].soon && seats.length <= MODES[m].players.max && setMode(m)}
       setSettings={setSettings}
       notices={notices}
+      secret={secret}
+      knocks={knocks}
+      onAnswerKnock={(k, yes) => admit.current?.(k, yes)}
       onRename={(next) => {
         next = cleanName(next)
         if (!next || seats.some((x, j) => j > 0 && x.name === next)) return
@@ -320,7 +366,8 @@ function HostRoom({ name, onLeave, onRename }) {
 }
 
 // ---------------- Guest ----------------
-function GuestRoom({ name, code, onLeave, onRename }) {
+function GuestRoom({ name, code, secret, onLeave, onRename }) {
+  const [shownCode, setShownCode] = useState(code) // with a link, the room's code arrives from the host (only shown, never reconnects)
   const [attempt, setAttempt] = useState(0) // bump to try again
   const [status, setStatus] = useState('connecting') // connecting | lobby | game | closed | error
   const [phase, setPhase] = useState('server') // server -> host
@@ -364,7 +411,7 @@ function GuestRoom({ name, code, onLeave, onRename }) {
       setPhase('host')
       phaseRef.current = 'host'
       // metadata: who we are, so the host knows a retry is the same person
-      const c = peer.connect(PREFIX + code, { ...CONNECT_OPTIONS, metadata: { id: playerId(), name } })
+      const c = peer.connect(PREFIX + (code || 'LINK'), { ...CONNECT_OPTIONS, secret, metadata: { id: playerId(), name: nameRef.current } })
       conn.current = c
       c.on('open', () => {
         lastHeard = Date.now()
@@ -372,6 +419,14 @@ function GuestRoom({ name, code, onLeave, onRename }) {
       })
       c.on('data', (msg) => {
         lastHeard = Date.now()
+        if (msg.code) setShownCode(msg.code)
+        if (msg.type === 'pending') {
+          joined = true
+          clearTimeout(giveUp)
+          setStatus('pending')
+          setLobby((l) => ({ ...(l ?? {}), host: msg.host }))
+          return
+        }
         if (!joined && (msg.type === 'lobby' || msg.type === 'state' || msg.type === 'refused')) {
           joined = true
           clearTimeout(giveUp)
@@ -393,7 +448,9 @@ function GuestRoom({ name, code, onLeave, onRename }) {
     peer.on('error', (e) => {
       setError(
         e.type === 'peer-unavailable'
-          ? `No room with code ${code}. Check the code with your host, and that their room is still open.`
+          ? secret
+            ? "This invite link doesn't lead to an open room. The host may have closed it: ask them for a new link."
+            : `No room with code ${code}. Check the code with your host, and that their room is still open.`
           : e.type === 'network'
             ? "Couldn't reach the online service. Check your internet connection, then try again."
             : `Connection problem (${e.type}).`,
@@ -411,13 +468,13 @@ function GuestRoom({ name, code, onLeave, onRename }) {
   const send = (action) => conn.current?.open && conn.current.send({ type: 'action', action })
 
   if (status === 'game' && view) {
-    return <Game game={view.state} dispatch={send} onRestart={null} onQuit={onLeave} online={{ seat: view.seat, isHost: false, code }} />
+    return <Game game={view.state} dispatch={send} onRestart={null} onQuit={onLeave} online={{ seat: view.seat, isHost: false, code: shownCode }} />
   }
   if (status === 'lobby' && lobby) {
     const message = (m) => conn.current?.open && conn.current.send(m)
     return (
       <Lobby
-        code={code}
+        code={shownCode}
         status="open"
         seats={lobby.seats}
         you={lobby.you}
@@ -443,10 +500,17 @@ function GuestRoom({ name, code, onLeave, onRename }) {
       <div className="setup">
         <h1 className="title compact">UNO <span className="title-tag">Online</span></h1>
         <div className="panel center-text-panel">
+          {status === 'pending' && (
+            <>
+              <div className="spinner" />
+              <h2 className="plain">Waiting for {lobby?.host ?? 'the host'} to let you in…</h2>
+              <p className="muted">You joined with the room code, so the host has to say yes. With an invite link you get in straight away.</p>
+            </>
+          )}
           {status === 'connecting' && (
             <>
               <div className="spinner" />
-              <h2 className="plain">Joining room {code}…</h2>
+              <h2 className="plain">{shownCode ? `Joining room ${shownCode}…` : 'Joining the room…'}</h2>
               <ol className="join-steps">
                 <li className={phase === 'server' ? 'now' : 'done'}>Connecting to the online service</li>
                 <li className={phase === 'host' ? 'now' : ''}>Finding the room</li>
@@ -481,7 +545,7 @@ function GuestRoom({ name, code, onLeave, onRename }) {
 }
 
 // ---------------- Lobby (shared by host and guests) ----------------
-function Lobby({ code, status, error, seats, you, isHost, connecting = {}, failedJoins = {}, mode, settings, setMode, setSettings, notices = [], onReady, onRename, onAddBot, onRemove, onStart, onLeave }) {
+function Lobby({ code, status, error, seats, you, isHost, connecting = {}, failedJoins = {}, mode, settings, setMode, setSettings, notices = [], secret, knocks = [], onAnswerKnock, onReady, onRename, onAddBot, onRemove, onStart, onLeave }) {
   const [copied, setCopied] = useState(null)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -528,9 +592,32 @@ function Lobby({ code, status, error, seats, you, isHost, connecting = {}, faile
                 ))}
               </div>
               <div className="copy-row">
-                <button className="btn-ghost" onClick={() => copy(code, 'code')}>{copied === 'code' ? 'Copied!' : 'Copy code'}</button>
-                <button className="btn-ghost" onClick={() => copy(inviteLink(code), 'link')}>{copied === 'link' ? 'Copied!' : 'Copy invite link'}</button>
+                {isHost && secret ? (
+                  <>
+                    <button className="btn-ghost invite-main" onClick={() => copy(inviteLink(secret), 'link')}>
+                      {copied === 'link' ? '✓ Link copied!' : '🔗 Copy invite link'}
+                    </button>
+                    <button className="btn-ghost" onClick={() => copy(code, 'code')}>{copied === 'code' ? 'Copied!' : 'Copy code'}</button>
+                  </>
+                ) : (
+                  <button className="btn-ghost" onClick={() => copy(code, 'code')}>{copied === 'code' ? 'Copied!' : 'Copy code'}</button>
+                )}
               </div>
+              {isHost && (
+                <p className="invite-note">
+                  🔒 The <b>invite link</b> is private: friends with it join straight away. Anyone typing the <b>code</b> has to be let in by you.
+                </p>
+              )}
+              {isHost &&
+                knocks.map((k) => (
+                  <div key={k.peer} className="knock">
+                    <span><b>{k.name}</b> wants to join with the room code</span>
+                    <div className="knock-btns">
+                      <button className="btn small-btn" onClick={() => onAnswerKnock(k, true)}>Let in</button>
+                      <button className="btn-ghost small-btn" onClick={() => onAnswerKnock(k, false)}>Deny</button>
+                    </div>
+                  </div>
+                ))}
             </>
           )}
 

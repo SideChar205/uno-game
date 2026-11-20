@@ -248,19 +248,23 @@ class RelayConn extends Emitter {
 const ROOM_PREFIX = /^.*-room-/ // ids look like "unopractice-room-ABCDE"
 
 export class RelayPeer extends Emitter {
-  constructor(roomId) {
+  // host: new RelayPeer(roomId, { secret }) listens on two channels:
+  //   'link' - keyed by the long secret in the invite link (unguessable): guests come straight in
+  //   'code' - keyed by the short room code (easy to type, easy to guess): guests must be let in by the host
+  constructor(roomId, options = {}) {
     super()
     this.id = randomId()
     this.destroyed = false
     this.clients = []
     this.conns = new Map() // other side's id -> RelayConn
-    if (typeof roomId === 'string') this._host(roomId.replace(ROOM_PREFIX, ''))
+    if (typeof roomId === 'string') this._host(roomId.replace(ROOM_PREFIX, ''), options.secret)
     else this._guest()
   }
 
   // ---- host: listen on every relay so guests can use whichever one works for them ----
-  async _host(code) {
-    const { topic, key } = await roomCrypto(code)
+  async _host(code, secret) {
+    const channels = [{ via: 'code', ...(await roomCrypto(code)) }]
+    if (secret) channels.push({ via: 'link', ...(await roomCrypto(`secret:${secret}`)) })
     const tries = RELAYS.map((url) => new Mqtt(url).connect().catch(() => null))
     let opened = false
     tries.forEach((p) =>
@@ -268,10 +272,12 @@ export class RelayPeer extends Emitter {
         if (!client) return
         if (this.destroyed) return client.end()
         this.clients.push(client)
-        client.subscribe(`${topic}/h`, async (bytes) => {
-          const msg = await open(key, bytes)
-          if (msg && !this.destroyed) this._hostMessage(client, topic, key, msg)
-        })
+        for (const { via, topic, key } of channels) {
+          client.subscribe(`${topic}/h`, async (bytes) => {
+            const msg = await open(key, bytes)
+            if (msg && !this.destroyed) this._hostMessage(client, topic, key, msg, via)
+          })
+        }
         if (!opened) {
           opened = true
           this.emit('open', code)
@@ -282,7 +288,7 @@ export class RelayPeer extends Emitter {
     if (!all.some(Boolean) && !this.destroyed) this.emit('error', { type: 'network' })
   }
 
-  _hostMessage(client, topic, key, msg) {
+  _hostMessage(client, topic, key, msg, via) {
     const from = String(msg.f ?? '')
     if (!from) return
     const reply = (obj) => seal(key, { ...obj, f: this.id }).then((b) => client.publish(`${topic}/g/${from}`, b))
@@ -290,6 +296,7 @@ export class RelayPeer extends Emitter {
     if (msg.k === 'hi') {
       if (known) return reply({ k: 'ok' }) // the guest didn't hear our first answer
       const conn = new RelayConn({ peer: from, metadata: msg.m, send: reply, onClose: () => this.conns.delete(from) })
+      conn.via = via // 'link' (came with the secret) or 'code' (needs the host's OK)
       this.conns.set(from, conn)
       this.emit('connection', conn)
       reply({ k: 'ok' })
@@ -315,8 +322,9 @@ export class RelayPeer extends Emitter {
     this.emit('open', this.id)
   }
 
-  connect(roomId, { metadata } = {}) {
-    const code = roomId.replace(ROOM_PREFIX, '')
+  // guest: connect with the invite link's secret if you have it, otherwise with the room code
+  connect(roomId, { metadata, secret } = {}) {
+    const code = secret ? `secret:${secret}` : roomId.replace(ROOM_PREFIX, '')
     const client = this.clients[0]
     const conn = new RelayConn({ peer: roomId, metadata, send: () => {}, onClose: () => this.conns.delete(roomId) })
     this.conns.set(roomId, conn)

@@ -7,7 +7,9 @@ import Online from './online/Online.jsx'
 export default function App() {
   const [game, dispatch] = useReducer(gameReducer, null)
   // an invite link (?room=CODE) opens the online screen straight away
-  const [screen, setScreen] = useState(() => (new URLSearchParams(window.location.search).has('room') ? 'online' : 'local'))
+  const [screen, setScreen] = useState(() =>
+    new URLSearchParams(window.location.search).has('room') || /join=/.test(window.location.hash) ? 'online' : 'local',
+  )
 
   if (screen === 'online') return <Online onBack={() => setScreen('local')} />
 
